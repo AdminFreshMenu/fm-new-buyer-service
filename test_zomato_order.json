@@ -1,0 +1,77 @@
+{
+  "order": {
+    "order_id": "ZOM123456789",
+    "restaurant_id": 1,
+    "restaurant_name": "FreshMenu Test Restaurant",
+    "outlet_id": "12345",
+    "order_instructions": "Please deliver to gate 2",
+    "order_date_time": "2025-09-16T13:05:00+05:30",
+    "enable_delivery": 1,
+    "net_amount": 275.0,
+    "gross_amount": 300.0,
+    "amount_paid": 0.0,
+    "amount_balance": 275.0,
+    "payment_mode": "COD",
+    "payment_status": "PENDING",
+    "order_status": "PLACED",
+    "customer_details": {
+      "name": "John Doe",
+      "phone_number": "+919876543210",
+      "email": "john.doe@example.com",
+      "address": "123 Main Street, Koramangala",
+      "delivery_area": "Koramangala",
+      "pincode": 560034,
+      "order_instruction": "Ring the doorbell twice",
+      "city": "Bangalore",
+      "state": "Karnataka",
+      "country": "India"
+    },
+    "order_discounts": [
+      {
+        "name": "Welcome Discount",
+        "amount": 50.0
+      },
+      {
+        "name": "Loyalty Points",
+        "amount": 25.0
+      }
+    ],
+    "order_additional_charges": [
+      {
+        "name": "Delivery Fee",
+        "amount": 30.0
+      },
+      {
+        "name": "Platform Fee",
+        "amount": 5.0
+      },
+      {
+        "name": "GST",
+        "amount": 15.0
+      }
+    ],
+    "cash_to_be_collected": 275,
+    "total_merchant": 250.0,
+    "is_special_combo_order": 0,
+    "dishes": [
+      {
+        "name": "Chicken Biryani",
+        "quantity": 1,
+        "price": 180.0
+      },
+      {
+        "name": "Raita",
+        "quantity": 1,
+        "price": 45.0
+      }
+    ],
+    "otp": "1234",
+    "otp_message": "Please provide OTP 1234 to delivery partner",
+    "cutlery_instructions": "Include cutlery",
+    "order_tags": [
+      {
+        "tag": "PRIORITY"
+      }
+    ]
+  }
+}

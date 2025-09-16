@@ -1,0 +1,37 @@
+{
+  "testCases": [
+    {
+      "description": "Single digit outlet_id should set brand_id=1 and kitchen_id=outlet_id",
+      "order": {
+        "order_id": "TEST_SINGLE_DIGIT",
+        "outlet_id": "5",
+        "expected_result": {
+          "brand_id": 1,
+          "kitchen_id": 5
+        }
+      }
+    },
+    {
+      "description": "Underscore format outlet_id should split into brand_id and kitchen_id",
+      "order": {
+        "order_id": "TEST_UNDERSCORE_FORMAT", 
+        "outlet_id": "6_1",
+        "expected_result": {
+          "brand_id": 6,
+          "kitchen_id": 1
+        }
+      }
+    },
+    {
+      "description": "Another underscore format example",
+      "order": {
+        "order_id": "TEST_UNDERSCORE_FORMAT_2",
+        "outlet_id": "12_3", 
+        "expected_result": {
+          "brand_id": 12,
+          "kitchen_id": 3
+        }
+      }
+    }
+  ]
+}

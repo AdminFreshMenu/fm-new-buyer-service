@@ -1,0 +1,18 @@
+{
+  "order": {
+    "order_id": "GC_TEST_ORDER_12345",
+    "outlet_id": "6_1",
+    "gross_amount": 450.75,
+    "net_amount": 485.50,
+    "customer_details": {
+      "name": "Jane Smith",
+      "phone_number": "+919876543210",
+      "email": "jane.smith@example.com",
+      "address": "456 Park Avenue",
+      "delivery_area": "Indiranagar",
+      "city": "Bangalore",
+      "state": "Karnataka",
+      "pincode": "560038"
+    }
+  }
+}
