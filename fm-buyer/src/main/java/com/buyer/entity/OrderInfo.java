@@ -83,7 +83,7 @@ public class OrderInfo extends AbstractMutableEntity {
     @Column
     private Integer amountToBeCollected;
 
-    @Column
+    @Column(columnDefinition = "DATETIME(0)")
     private LocalDateTime deliveryTime;
 
     @Column
@@ -132,7 +132,7 @@ public class OrderInfo extends AbstractMutableEntity {
 		this.shippingCharges = shippingCharges;
 	}
 
-	public LocalDateTime getDeliveryTime() {
+    public LocalDateTime getDeliveryTime() {
         return deliveryTime;
     }
 

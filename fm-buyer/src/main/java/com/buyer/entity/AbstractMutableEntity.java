@@ -9,10 +9,10 @@ public abstract class AbstractMutableEntity {
     public abstract Long getId();
     public abstract void setId(Long id);
     
-    @Column(name = "created_at")
+    @Column(name = "created_at", columnDefinition = "DATETIME(0)")
     private LocalDateTime createdAt;
     
-    @Column(name = "updated_at")
+    @Column(name = "updated_at", columnDefinition = "DATETIME(0)")
     private LocalDateTime updatedAt;
     
     public LocalDateTime getCreatedAt() {
@@ -33,12 +33,13 @@ public abstract class AbstractMutableEntity {
     
     @PrePersist
     protected void onCreate() {
-        this.createdAt = LocalDateTime.now();
-        this.updatedAt = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now().withNano(0); // Remove nanoseconds
+        this.createdAt = now;
+        this.updatedAt = now;
     }
     
     @PreUpdate
     protected void onUpdate() {
-        this.updatedAt = LocalDateTime.now();
+        this.updatedAt = LocalDateTime.now().withNano(0); // Remove nanoseconds
     }
 }

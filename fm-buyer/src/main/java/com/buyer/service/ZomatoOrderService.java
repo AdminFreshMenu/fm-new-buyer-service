@@ -2,10 +2,17 @@ package com.buyer.service;
 
 import com.buyer.entity.Channel;
 import com.buyer.entity.OrderAddress;
+import com.buyer.entity.OrderAdditionalData;
+import com.buyer.entity.OrderAdditionalDetails;
 import com.buyer.entity.OrderInfo;
+import com.buyer.entity.OrderItem;
+import com.buyer.entity.OrderItemType;
 import com.buyer.entity.OrderUserInfo;
+import com.buyer.dto.OrderAdditionalDetailsDto;
 import com.buyer.repository.OrderAddressRepository;
+import com.buyer.repository.OrderAdditionalDetailsRepository;
 import com.buyer.repository.OrderInfoRepository;
+import com.buyer.repository.OrderItemRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
@@ -17,9 +24,15 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Instant;
+import java.time.LocalDateTime;
+import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.Date;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
+import org.springframework.util.StringUtils;
 
 @Service
 public class ZomatoOrderService {
@@ -31,6 +44,12 @@ public class ZomatoOrderService {
 
     @Autowired
     private OrderAddressRepository orderAddressRepository;
+
+    @Autowired
+    private OrderItemRepository orderItemRepository;
+
+    @Autowired
+    private OrderAdditionalDetailsRepository orderAdditionalDetailsRepository;
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -71,6 +90,11 @@ public class ZomatoOrderService {
             savedOrder.setExternalOrderId(customExternalOrderId);
             savedOrder = orderInfoRepository.save(savedOrder);
             
+            SaveOrderItems(order, savedOrder.getId());
+            
+            // Save additional order details
+            saveOrderAdditionalDetails(order, savedOrder.getId() , orderInfo);
+            
             logger.info("Order created successfully with ID: {} for Zomato orderId: {}, Custom externalOrderId: {}", 
                        savedOrder.getId(), zomatoOrderId, customExternalOrderId);
 
@@ -110,11 +134,11 @@ public class ZomatoOrderService {
         String externalOrderId = extractOrderId(order);
         orderInfo.setExternalOrderId(externalOrderId);
         orderInfo.setChannel(Channel.ZOMATO);
-        orderInfo.setOrderData(originalOrderJson);
+        orderInfo.setOrderData("Buyer_v2");
         
         // Set delivery time (default 40 minutes)
         orderInfo.setDeliveryTimeInMinutes("40");
-        
+
         // Customer information - using correct field name from OrderV3
         JsonNode customerDetails = order.get("customer_details");
         if (customerDetails != null) {
@@ -135,11 +159,66 @@ public class ZomatoOrderService {
             }
         }
         
-        if (order.has("gross_amount")) {
-            orderInfo.setTotalAmount(order.get("gross_amount").floatValue());
+
+        BigDecimal dishFinalCost = BigDecimal.ZERO;
+        BigDecimal addonTotal = BigDecimal.ZERO;
+        BigDecimal dishDiscount = BigDecimal.ZERO;
+        BigDecimal packagingCharge = BigDecimal.ZERO;
+
+        JsonNode dishes = order.get("dishes");
+        if (dishes != null && dishes.isArray()) {
+            for (JsonNode dish : dishes) {
+                if (dish.has("final_cost")) {
+                    dishFinalCost = dishFinalCost.add(dish.get("final_cost").decimalValue());
+                }
+
+                JsonNode composition = dish.get("composition");
+                if (composition != null && composition.has("modifier_groups")) {
+                    for (JsonNode group : composition.get("modifier_groups")) {
+                        JsonNode variants = group.get("variants");
+                        if (variants != null && variants.isArray()) {
+                            for (JsonNode variant : variants) {
+                                if (variant.has("total_cost")) {
+                                    addonTotal = addonTotal.add(new BigDecimal(variant.get("total_cost").asText()));
+                                }
+                            }
+                        }
+                    }
+                }
+
+
+                // discounts
+                JsonNode discounts = dish.get("dish_discounts");
+                if (discounts != null && discounts.isArray()) {
+                    for (JsonNode discount : discounts) {
+                        if (discount.has("amount")) {
+                            dishDiscount = dishDiscount.add(discount.get("amount").decimalValue());
+                        }
+                    }
+                }
+
+                // packaging charges
+                JsonNode charges = dish.get("charges");
+                if (charges != null && charges.isArray()) {
+                    for (JsonNode charge : charges) {
+                        if (charge.has("name")
+                                && "Restaurant Packaging Charges".equalsIgnoreCase(charge.get("name").asText())) {
+                            if (charge.has("amount")) {
+                                packagingCharge = packagingCharge.add(charge.get("amount").decimalValue());
+                            }
+                        }
+                    }
+                }
+
+            }
         }
         if (order.has("net_amount")) {
-            orderInfo.setFinalAmount(order.get("net_amount").floatValue());
+            orderInfo.setTotalAmount(dishFinalCost.floatValue()+ addonTotal.floatValue());
+        }
+
+
+        if (order.has("total_merchant")) {
+            orderInfo.setFinalAmount(order.get("total_merchant").floatValue());
         }
         
         // Handle additional charges for shipping/delivery
@@ -153,19 +232,8 @@ public class ZomatoOrderService {
             }
             orderInfo.setShippingCharges(totalAdditionalCharges);
         }
-        
-        // Handle order discounts
-        JsonNode orderDiscounts = order.get("order_discounts");
-        if (orderDiscounts != null && orderDiscounts.isArray()) {
-            float totalDiscounts = 0f;
-            for (JsonNode discount : orderDiscounts) {
-                if (discount.has("amount")) {
-                    totalDiscounts += discount.get("amount").floatValue();
-                }
-            }
-            orderInfo.setOfferAmount(totalDiscounts);
-            orderInfo.setCartLevelDiscount(new BigDecimal(String.valueOf(totalDiscounts)));
-        }
+
+
         
         // Payment information
         if (order.has("cash_to_be_collected")) {
@@ -182,13 +250,11 @@ public class ZomatoOrderService {
                 parseOutletId(orderInfo, outletIdStr);
             }
         }
-        
-        // Keep restaurant_id handling as fallback
-        if (order.has("restaurant_id") && orderInfo.getBrandId() == null) {
-            orderInfo.setBrandId(order.get("restaurant_id").asInt());
-        }
-        
 
+        orderInfo.setPackagingCharges(packagingCharge);
+        orderInfo.setProductDiscount(dishDiscount);
+        orderInfo.setOfferAmount(dishDiscount.floatValue());
+        orderInfo.setOfferCode("ZOMATO_DISCOUNT");
         
         // Set default values for required BigDecimal fields
         if (orderInfo.getPromoBalance() == null) {
@@ -197,9 +263,7 @@ public class ZomatoOrderService {
         if (orderInfo.getBankOffer() == null) {
             orderInfo.setBankOffer(BigDecimal.ZERO);
         }
-        if (orderInfo.getPackagingCharges() == null) {
-            orderInfo.setPackagingCharges(BigDecimal.ZERO);
-        }
+
         if (orderInfo.getProductDiscount() == null) {
             orderInfo.setProductDiscount(BigDecimal.ZERO);
         }
@@ -299,19 +363,228 @@ public class ZomatoOrderService {
             logger.warn("Could not parse outlet_id '{}': {}", outletIdStr, e.getMessage());
         }
     }
+
+
+    private String generateExternalOrderId(Integer brandId, Long orderId) {
+        if (brandId == null) {
+            return "fm" + orderId;
+        }
+
+        switch (brandId) {
+            case 6:  return "GC"  + orderId;
+            case 8:  return "EDF" + orderId;
+            case 11: return "BS"  + orderId;
+            case 12: return "DB"  + orderId;
+            case 14: return "TC"  + orderId;
+            case 17: return "PC"  + orderId;
+            case 18: return "SS"  + orderId;
+            case 19: return "CFX" + orderId;
+            case 20: return "GG"  + orderId;
+            default: return "fm"  + orderId;
+        }
+    }
+
+
+    /**
+     * Extract and save order items from the dish array in Zomato order JSON
+     */
+    private void SaveOrderItems(JsonNode order, Long orderId) {
+        try {
+            JsonNode dishes = order.get("dishes");
+            if (dishes != null && dishes.isArray()) {
+                logger.info("Processing {} dishes for orderId: {}", dishes.size(), orderId);
+                
+                for (JsonNode dish : dishes) {
+                    OrderItem orderItem = new OrderItem();
+                    orderItem.setOrderId(orderId);
+                    orderItem.setOrderItemType(OrderItemType.PRODUCT);
+                    
+                    // Product information
+                    if (dish.has("dish_id")) {
+                        orderItem.setProductId(dish.get("dish_id").asLong());
+                    }
+                    
+                    // Quantity
+                    if (dish.has("quantity")) {
+                        orderItem.setQuantity(dish.get("quantity").asInt());
+                    }
+                    
+                    // Price information from composition
+                    if (dish.has("composition") && dish.get("composition").has("unit_cost")) {
+                        int price = dish.get("composition").get("unit_cost").asInt();
+                        orderItem.setSellingPrice(price);
+                        orderItem.setMrp(price);
+                        logger.debug("Set dish price: {} for dish_id: {}", price, orderItem.getProductId());
+                    } else {
+                        logger.warn("No unit_cost found in composition for dish_id: {}", dish.get("dish_id").asText());
+                    }
+                    
+                    if (dish.has("total_cost")) {
+                        orderItem.setTsp(dish.get("total_cost").asInt());
+                    }
+                    
+                    if (dish.has("discount_amount")) {
+                        orderItem.setDiscountAmount(new BigDecimal(dish.get("discount_amount").asText()));
+                    } else {
+                        orderItem.setDiscountAmount(BigDecimal.ZERO);
+                    }
+                    
+                    if (dish.has("cashback_amount")) {
+                        orderItem.setCashbackAmount(new BigDecimal(dish.get("cashback_amount").asText()));
+                    } else {
+                        orderItem.setCashbackAmount(BigDecimal.ZERO);
+                    }
+                    
+                    if (dish.has("packaging_price")) {
+                        orderItem.setPackagingPrice(new BigDecimal(dish.get("packaging_price").asText()));
+                    } else {
+                        orderItem.setPackagingPrice(BigDecimal.ZERO);
+                    }
+                    
+                    if (dish.has("customer_discount")) {
+                        orderItem.setcDisc(new BigDecimal(dish.get("customer_discount").asText()));
+                    } else {
+                        orderItem.setcDisc(BigDecimal.ZERO);
+                    }
+                    
+                    OrderItem savedOrderItem = orderItemRepository.save(orderItem);
+                    logger.debug("Saved order item with ID: {} for dish_id: {}, quantity: {}", 
+                               savedOrderItem.getId(), orderItem.getProductId(), orderItem.getQuantity());
+                    
+                    // Check for addons in modifier_groups or direct addons/modifications
+                    boolean hasModifierGroups = dish.has("composition") && 
+                                              dish.get("composition").has("modifier_groups") &&
+                                              dish.get("composition").get("modifier_groups").isArray() &&
+                                              dish.get("composition").get("modifier_groups").size() > 0;
+                    
+                    if (hasModifierGroups || dish.has("addons") || dish.has("modifications")) {
+                        processAddonsAndModifications(dish, orderId, savedOrderItem.getId());
+                    }
+                }
+                
+                logger.info("Successfully processed and saved order items for orderId: {}", orderId);
+            } else {
+                logger.info("No dishes found in order for orderId: {}", orderId);
+            }
+        } catch (Exception e) {
+            logger.error("Error processing order items for orderId: {}", orderId, e);
+        }
+    }
     
     /**
-     * Generate external order ID based on brand ID
-     * brandId = 1 -> "fm" + orderId
-     * brandId = 6 -> "GC" + orderId  
-     * default -> "fm" + orderId
+     * Process addons and modifications for a dish
      */
-    private String generateExternalOrderId(Integer brandId, Long orderId) {
-        if (brandId != null && brandId == 6) {
-            return "GC" + orderId;
-        } else {
-            // Default to "fm" prefix for brandId = 1 or any other value
-            return "fm" + orderId;
+    private void processAddonsAndModifications(JsonNode dish, Long orderId, Long parentOrderItemId) {
+        try {
+            // Handle addons from modifier_groups in composition
+            JsonNode composition = dish.get("composition");
+            if (composition != null && composition.has("modifier_groups")) {
+                JsonNode modifierGroups = composition.get("modifier_groups");
+                if (modifierGroups != null && modifierGroups.isArray()) {
+                    for (JsonNode modifierGroup : modifierGroups) {
+                        if (modifierGroup.has("variants")) {
+                            JsonNode variants = modifierGroup.get("variants");
+                            if (variants != null && variants.isArray()) {
+                                for (JsonNode variant : variants) {
+                                    OrderItem addonItem = new OrderItem();
+                                    addonItem.setOrderId(orderId);
+                                    addonItem.setParentOrderItemId(parentOrderItemId);
+                                    addonItem.setOrderItemType(OrderItemType.ADDON);
+                                    
+                                    if (variant.has("variant_id")) {
+                                        addonItem.setProductId(variant.get("variant_id").asLong());
+                                    }
+                                    if (variant.has("quantity")) {
+                                        addonItem.setQuantity(variant.get("quantity").asInt());
+                                    }
+                                    if (variant.has("unit_cost")) {
+                                        int price = variant.get("unit_cost").asInt();
+                                        addonItem.setSellingPrice(price);
+                                        addonItem.setMrp(price);
+                                        addonItem.setTsp(price * addonItem.getQuantity());
+                                        logger.debug("Set addon price: {} for variant_id: {}", price, variant.get("variant_id").asText());
+                                    } else {
+                                        logger.warn("No unit_cost found for addon variant_id: {}", variant.get("variant_id").asText());
+                                    }
+                                    
+                                    addonItem.setDiscountAmount(BigDecimal.ZERO);
+                                    addonItem.setCashbackAmount(BigDecimal.ZERO);
+                                    addonItem.setPackagingPrice(BigDecimal.ZERO);
+                                    addonItem.setcDisc(BigDecimal.ZERO);
+                                    
+                                    orderItemRepository.save(addonItem);
+                                    logger.debug("Saved addon item from modifier_groups for parent order item: {}", parentOrderItemId);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            
+            // Also handle direct addons array (for backward compatibility)
+            JsonNode addons = dish.get("addons");
+            if (addons != null && addons.isArray()) {
+                for (JsonNode addon : addons) {
+                    OrderItem addonItem = new OrderItem();
+                    addonItem.setOrderId(orderId);
+                    addonItem.setParentOrderItemId(parentOrderItemId);
+                    addonItem.setOrderItemType(OrderItemType.ADDON);
+                    
+                    if (addon.has("addon_id")) {
+                        addonItem.setProductId(addon.get("addon_id").asLong());
+                    }
+                    if (addon.has("quantity")) {
+                        addonItem.setQuantity(addon.get("quantity").asInt());
+                    }
+                    if (addon.has("price")) {
+                        int price = (int) (addon.get("price").asDouble() * 100);
+                        addonItem.setSellingPrice(price);
+                        addonItem.setMrp(price);
+                        addonItem.setTsp(price * addonItem.getQuantity());
+                    }
+                    
+                    addonItem.setDiscountAmount(BigDecimal.ZERO);
+                    addonItem.setCashbackAmount(BigDecimal.ZERO);
+                    addonItem.setPackagingPrice(BigDecimal.ZERO);
+                    addonItem.setcDisc(BigDecimal.ZERO);
+                    
+                    orderItemRepository.save(addonItem);
+                    logger.debug("Saved addon item from addons array for parent order item: {}", parentOrderItemId);
+                }
+            }
+            
+            JsonNode modifications = dish.get("modifications");
+            if (modifications != null && modifications.isArray()) {
+                for (JsonNode modification : modifications) {
+                    OrderItem modificationItem = new OrderItem();
+                    modificationItem.setOrderId(orderId);
+                    modificationItem.setParentOrderItemId(parentOrderItemId);
+                    modificationItem.setOrderItemType(OrderItemType.OTHER);
+                    
+                    if (modification.has("modification_id")) {
+                        modificationItem.setProductId(modification.get("modification_id").asLong());
+                    }
+                    if (modification.has("quantity")) {
+                        modificationItem.setQuantity(modification.get("quantity").asInt());
+                    }
+                    if (modification.has("price")) {
+                        int price = (int) (modification.get("price").asDouble() * 100);
+                        modificationItem.setSellingPrice(price);
+                        modificationItem.setMrp(price);
+                        modificationItem.setTsp(price * modificationItem.getQuantity());
+                    }
+                    
+                    modificationItem.setDiscountAmount(BigDecimal.ZERO);
+                    modificationItem.setCashbackAmount(BigDecimal.ZERO);
+                    modificationItem.setPackagingPrice(BigDecimal.ZERO);
+                    modificationItem.setcDisc(BigDecimal.ZERO);
+                    
+                    orderItemRepository.save(modificationItem);
+                    logger.debug("Saved modification item for parent order item: {}", parentOrderItemId);
+                }
+            }
+        } catch (Exception e) {
+            logger.error("Error processing addons/modifications for parent order item: {}", parentOrderItemId, e);
         }
     }
     
@@ -331,5 +604,94 @@ public class ZomatoOrderService {
         response.put("message", message);
         response.put("error_code", status.value());
         return ResponseEntity.status(status).body(response);
+    }
+    
+    /**
+     * Save additional order details from Zomato order JSON
+     */
+    private void saveOrderAdditionalDetails(JsonNode order, Long orderId, OrderInfo orderInfo) {
+        try {
+            List<OrderAdditionalDetailsDto> additionalDetailsDtos = new ArrayList<>();
+            
+            // Zomato Order ID
+            if (order.has("order_id")) {
+                additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.ZOMATO_ORDER_ID,
+                        order.get("order_id").asText()));
+            }
+            
+            // Amount Balance
+            if (order.has("amount_balance")) {
+                additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.ORDER_AMOUNT_BALANCE,
+                        order.get("amount_balance").asText()));
+            }
+            
+            // Amount Paid
+            if (order.has("amount_paid")) {
+                additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.ORDER_AMOUNT_PAID,
+                        order.get("amount_paid").asText()));
+            }
+            
+            // Net Amount
+            if (order.has("net_amount")) {
+                additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.ORDER_NET_AMOUNT,
+                        order.get("net_amount").asText()));
+            }
+            
+            // Gross Amount
+            if (order.has("gross_amount")) {
+                additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.ORDER_GROSS_AMOUNT,
+                        order.get("gross_amount").asText()));
+            }
+            
+            // OTP
+            if (order.has("otp")) {
+                additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.ZOMATO_OTP,
+                        order.get("otp").asText()));
+            }
+            
+            // Delivery Channel
+            if (order.has("enable_delivery") && order.get("enable_delivery").asInt() == 0) {
+                additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.DELIVERY_CHANNEL,
+                        Channel.ZOMATO.name()));
+            }
+
+            // Order Instructions
+            if (order.has("order_instructions") && StringUtils.hasText(order.get("order_instructions").asText())) {
+                additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.NOTES,
+                        order.get("order_instructions").asText()));
+            }
+
+            additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.EXPECTED_KITCHEN_ID,
+                    orderInfo.getKitchenId().toString()));
+            additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.ORDER_DISCOUNT_AMOUNT,
+                    orderInfo.getOfferAmount().toString()));
+
+            additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.ORDER_OFFER_COUPON,
+                    "salt"));
+
+            additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.IS_EXPRESS_CHECK_OUT,
+                    "true"));
+
+            // Save all additional details
+            for (OrderAdditionalDetailsDto dto : additionalDetailsDtos) {
+                OrderAdditionalDetails detail = new OrderAdditionalDetails();
+                detail.setOrderId(dto.getOrderId());
+                detail.setOrderKey(dto.getOrderKey());
+                detail.setOrderKeyValue(dto.getOrderKeyValue());
+                orderAdditionalDetailsRepository.save(detail);
+            }
+            
+            logger.info("Saved {} additional details for orderId: {}", additionalDetailsDtos.size(), orderId);
+            
+        } catch (Exception e) {
+            logger.error("Error saving additional order details for orderId: {}", orderId, e);
+        }
+    }
+    
+    /**
+     * Create OrderAdditionalDetailsDto helper method
+     */
+    private OrderAdditionalDetailsDto createOrderAdditionalDetailsDto(Long orderId, OrderAdditionalData orderKey, String orderKeyValue) {
+        return new OrderAdditionalDetailsDto(orderId, orderKey, orderKeyValue);
     }
 }

@@ -1,0 +1,129 @@
+{
+  "order": {
+    "order_id": 7282684753,
+    "restaurant_id": 20706590,
+    "restaurant_name": "Bowl Soul",
+    "outlet_id": "11_117",
+    "order_date_time": 1758104019,
+    "enable_delivery": 0,
+    "order_type": "DELIVERY",
+    "order_instructions": "Send cutlery",
+    "customer_details": {
+      "name": "Sai Pavan A",
+      "order_instructions": "Send cutlery",
+      "customer_id": "b3146e782730c0b296695964555bdf85240f16ee104e832a322d7202cd8099c7",
+      "phone_number": "08046806752",
+      "email": "8046806752@example.com",
+      "pincode": "",
+      "delivery_area": "Nanja Reddy Colony, Murugesh Palyla, Bangalore",
+      "delivery_coordinates_type": "user",
+      "city": "Bengaluru",
+      "state": "",
+      "country": "India",
+      "address_type": "Home"
+    },
+    "pickup_time": 20,
+    "net_amount": 348,
+    "gross_amount": 183,
+    "order_discounts": [],
+    "is_special_combo_order": 0,
+    "dishes": [
+      {
+        "dish_type": "variant",
+        "dish_id": "14758",
+        "composition": {
+          "variant_id": "14758",
+          "catalogue_id": "14758",
+          "catalogue_name": "Middle Eastern Chicken Shawarma Bowl",
+          "catalogue_description": "Transport your taste buds to the streets of the Middle East with our Middle Eastern Chicken Shawarma Bowl, boasting tender shawarma chicken, fragrant rice, and hearty chickpeas for an authentic culinary adventure",
+          "properties": [],
+          "modifier_groups": [
+            {
+              "group_id": "14758_0",
+              "group_name": "AddOns",
+              "variants": [
+                {
+                  "variant_id": "16696",
+                  "catalogue_id": "16696",
+                  "catalogue_name": "Double Egg Omelette",
+                  "catalogue_description": "Spiced double-egg omelette packed with onion, tomato, green chilli and coriander. power up with our protein bestseller! \\nEnegry-174 Kcal, Fat-14.04 gms, Carbs-2.15 gms, Fiber-0.5 gms, Protein-9.67 gms, Sugar-1.62 gms",
+                  "unit_cost": 49,
+                  "quantity": 1,
+                  "total_cost": 49,
+                  "max_allowed_quantity": 1
+                }
+              ]
+            }
+          ],
+          "instructions": [],
+          "unit_cost": 348,
+          "sub_category_id": "487",
+          "sub_category_name": "Continental Bowls",
+          "category_id": "487",
+          "category_name": "Continental Bowls"
+        },
+        "quantity": 1,
+        "total_cost": 348,
+        "total_discount": 0,
+        "final_cost": 348,
+        "taxes": [
+          {
+            "type": "SOURCE_TAX",
+            "slug": "SGST_D_P_2.50",
+            "name": "SGST",
+            "amount": 4.2
+          },
+          {
+            "type": "SOURCE_TAX",
+            "slug": "CGST_D_P_2.50",
+            "name": "CGST",
+            "amount": 4.2
+          }
+        ],
+        "charges": [
+          {
+            "charge_id": "3",
+            "name": "Restaurant Packaging Charges",
+            "type": "FIXED",
+            "value": 15,
+            "amount": 15,
+            "taxes": [
+              {
+                "type": "SOURCE_TAX",
+                "slug": "SGST_D_P_2.50",
+                "name": "SGST",
+                "amount": 0.38
+              },
+              {
+                "type": "SOURCE_TAX",
+                "slug": "CGST_D_P_2.50",
+                "name": "CGST",
+                "amount": 0.38
+              }
+            ]
+          }
+        ],
+        "dish_discounts": [
+          {
+            "type": "SALT",
+            "amount": 180,
+            "offer_id": ""
+          }
+        ]
+      }
+    ],
+    "is_rbt_enabled": false,
+    "merchant_bag_flow": false,
+    "is_bulk_order": false,
+    "vendor_total": 192.15,
+    "total_merchant": 183,
+    "payment_mode": "ONLINE",
+    "payment_status": "PAID",
+    "amount_balance": 0,
+    "amount_paid": 192.15,
+    "cash_to_be_collected": 0,
+    "order_status": "placed",
+    "otp": "2883",
+    "otp_message": "Please share the OTP with rider to pick up the order"
+  }
+}
