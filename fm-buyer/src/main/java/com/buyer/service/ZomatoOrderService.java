@@ -13,17 +13,21 @@ import com.buyer.repository.OrderAddressRepository;
 import com.buyer.repository.OrderAdditionalDetailsRepository;
 import com.buyer.repository.OrderInfoRepository;
 import com.buyer.repository.OrderItemRepository;
+import com.buyer.delivery.repository.OrderRepository;
+import com.buyer.delivery.entity.Order;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.sql.Timestamp;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
@@ -50,6 +54,9 @@ public class ZomatoOrderService {
 
     @Autowired
     private OrderAdditionalDetailsRepository orderAdditionalDetailsRepository;
+
+    @Autowired
+    private OrderRepository orderRepository; // Delivery database
 
     @Autowired
     private ObjectMapper objectMapper;
@@ -93,7 +100,10 @@ public class ZomatoOrderService {
             SaveOrderItems(order, savedOrder.getId());
             
             // Save additional order details
-            saveOrderAdditionalDetails(order, savedOrder.getId() , orderInfo);
+            saveOrderAdditionalDetails(order, savedOrder.getId(), savedOrder);
+            
+            // Save order in delivery database
+            saveOrderInDeliveryDatabase(savedOrder);
             
             logger.info("Order created successfully with ID: {} for Zomato orderId: {}, Custom externalOrderId: {}", 
                        savedOrder.getId(), zomatoOrderId, customExternalOrderId);
@@ -693,5 +703,43 @@ public class ZomatoOrderService {
      */
     private OrderAdditionalDetailsDto createOrderAdditionalDetailsDto(Long orderId, OrderAdditionalData orderKey, String orderKeyValue) {
         return new OrderAdditionalDetailsDto(orderId, orderKey, orderKeyValue);
+    }
+    
+    /**
+     * Save order information in delivery database
+     */
+    private void saveOrderInDeliveryDatabase(OrderInfo orderInfo) {
+        try {
+            Order deliveryOrder = new Order();
+            deliveryOrder.setOrderNumber(orderInfo.getId().intValue());
+            deliveryOrder.setLatitude("0.0");
+            deliveryOrder.setLongitude("0.0");
+            if (orderInfo.getShippingAddress() != null) {
+                deliveryOrder.setUserAddressId(orderInfo.getShippingAddress().getId());
+            }
+
+            deliveryOrder.setDeliveryPersonId(null);
+            deliveryOrder.setOrderInvoiceId(null);
+            deliveryOrder.setDeliveredAt(null);
+            deliveryOrder.setStatus(orderInfo.getChannel().toString());
+            deliveryOrder.setKitchenId(orderInfo.getKitchenId().intValue());
+            deliveryOrder.setBrandId(orderInfo.getBrandId());
+
+            deliveryOrder.setSource("fm");
+            deliveryOrder.setDeliveryChannel(orderInfo.getChannel().toString());
+            deliveryOrder.setTripOrderSeq(1L);
+            deliveryOrder.setSearchKey(orderInfo.getId().toString() + "," + orderInfo.getShippingAddress().getLastName() +",");
+            
+            LocalDateTime now = LocalDateTime.now(ZoneId.of("Asia/Kolkata")).withNano(0);
+            deliveryOrder.setCreatedAt(now);
+            deliveryOrder.setUpdatedAt(now);
+
+            Order savedDeliveryOrder = orderRepository.save(deliveryOrder);
+            logger.info("Saved order in delivery database with ID: {} for order number: {}", 
+                       savedDeliveryOrder.getId(), deliveryOrder.getOrderNumber());
+                       
+        } catch (Exception e) {
+            logger.error("Error saving order in delivery database for order ID: {}", orderInfo.getId(), e);
+        }
     }
 }
