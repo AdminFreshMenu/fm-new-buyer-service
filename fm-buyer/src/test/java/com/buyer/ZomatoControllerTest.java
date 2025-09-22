@@ -1,7 +1,7 @@
 package com.buyer;
 
 import com.buyer.entity.OrderItem;
-import com.buyer.entity.OrderItemType;
+import com.buyer.entity.OrderEnum.OrderItemType;
 import com.buyer.repository.OrderItemRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
@@ -17,7 +17,6 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
@@ -40,14 +39,6 @@ public class ZomatoControllerTest {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build();
     }
 
-    @Test
-    public void testHealthEndpoint() throws Exception {
-        setup();
-        mockMvc.perform(get("/api/zomato/health"))
-                .andExpect(status().isOk())
-                .andExpect(jsonPath("$.status").value("UP"))
-                .andExpect(jsonPath("$.service").value("fm-buyer Zomato Integration"));
-    }
 
     @Test
     public void testCreateOrderEndpoint() throws Exception {

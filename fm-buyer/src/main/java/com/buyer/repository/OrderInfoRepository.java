@@ -1,7 +1,7 @@
 package com.buyer.repository;
 
 import com.buyer.entity.OrderInfo;
-import com.buyer.entity.Channel;
+import com.buyer.entity.OrderEnum.Channel;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;

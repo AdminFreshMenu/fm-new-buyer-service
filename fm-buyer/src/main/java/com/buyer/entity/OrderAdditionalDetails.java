@@ -1,5 +1,6 @@
 package com.buyer.entity;
 
+import com.buyer.entity.OrderEnum.OrderAdditionalData;
 import jakarta.persistence.*;
 
 @Entity

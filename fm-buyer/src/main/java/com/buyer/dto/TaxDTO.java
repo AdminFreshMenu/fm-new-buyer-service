@@ -1,4 +1,4 @@
-package com.buyer.entity;
+package com.buyer.dto;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;

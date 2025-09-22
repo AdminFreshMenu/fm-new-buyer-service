@@ -1,5 +1,8 @@
 package com.buyer.entity;
 
+import com.buyer.dto.TaxConvertor;
+import com.buyer.dto.TaxDTO;
+import com.buyer.entity.OrderEnum.Channel;
 import org.hibernate.annotations.DynamicInsert;
 import org.hibernate.annotations.DynamicUpdate;
 import jakarta.persistence.*;

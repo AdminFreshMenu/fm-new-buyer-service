@@ -1,5 +1,6 @@
 package com.buyer.entity;
 
+import com.buyer.entity.OrderEnum.OrderItemType;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
 

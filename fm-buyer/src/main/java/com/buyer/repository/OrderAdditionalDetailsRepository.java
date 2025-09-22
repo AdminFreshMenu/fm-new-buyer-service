@@ -1,6 +1,6 @@
 package com.buyer.repository;
 
-import com.buyer.entity.OrderAdditionalData;
+import com.buyer.entity.OrderEnum.OrderAdditionalData;
 import com.buyer.entity.OrderAdditionalDetails;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.stereotype.Repository;

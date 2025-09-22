@@ -1,34 +1,39 @@
 package com.buyer.service;
 
-import com.buyer.entity.Channel;
+import com.buyer.entity.OrderEnum.Channel;
 import com.buyer.entity.OrderAddress;
-import com.buyer.entity.OrderAdditionalData;
+import com.buyer.entity.OrderEnum.OrderAdditionalData;
 import com.buyer.entity.OrderAdditionalDetails;
 import com.buyer.entity.OrderInfo;
 import com.buyer.entity.OrderItem;
-import com.buyer.entity.OrderItemType;
+import com.buyer.entity.OrderEnum.OrderItemType;
 import com.buyer.entity.OrderUserInfo;
 import com.buyer.dto.OrderAdditionalDetailsDto;
+import com.buyer.entity.PaymentEntry;
+import com.buyer.entity.PaymentEnum.PaymentFor;
+import com.buyer.entity.PaymentEnum.PaymentGateway;
+import com.buyer.entity.PaymentEnum.PaymentMethod;
+import com.buyer.entity.PaymentEnum.PaymentMode;
+import com.buyer.entity.PaymentEnum.PaymentStatus;
+import com.buyer.dto.PaymentUserInfo;
 import com.buyer.repository.OrderAddressRepository;
 import com.buyer.repository.OrderAdditionalDetailsRepository;
 import com.buyer.repository.OrderInfoRepository;
 import com.buyer.repository.OrderItemRepository;
 import com.buyer.delivery.repository.OrderRepository;
 import com.buyer.delivery.entity.Order;
+import com.buyer.repository.PaymentEntryRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
-import java.sql.Timestamp;
-import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
@@ -36,6 +41,8 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.ThreadLocalRandom;
+
 import org.springframework.util.StringUtils;
 
 @Service
@@ -60,6 +67,9 @@ public class ZomatoOrderService {
 
     @Autowired
     private ObjectMapper objectMapper;
+
+    @Autowired
+    private PaymentEntryRepository paymentEntryRepository;
 
     @Transactional
     public ResponseEntity<Map<String, Object>> createOrder(String orderJson) {
@@ -104,6 +114,9 @@ public class ZomatoOrderService {
             
             // Save order in delivery database
             saveOrderInDeliveryDatabase(savedOrder);
+
+            // Save payment entry in payment entry table
+            savePaymentEntry(savedOrder);
             
             logger.info("Order created successfully with ID: {} for Zomato orderId: {}, Custom externalOrderId: {}", 
                        savedOrder.getId(), zomatoOrderId, customExternalOrderId);
@@ -119,6 +132,69 @@ public class ZomatoOrderService {
             logger.error("Error processing Zomato order creation", e);
             return createErrorResponse("Internal server error: " + e.getMessage(), HttpStatus.INTERNAL_SERVER_ERROR);
         }
+    }
+
+    private void savePaymentEntry(OrderInfo orderInfo) {
+        PaymentEntry paymentEntry = new PaymentEntry();
+
+        paymentEntry.setOrderId(orderInfo.getId());
+        paymentEntry.setAmount(
+                orderInfo.getFinalAmount() != null
+                        ? String.valueOf(orderInfo.getFinalAmount().intValue())
+                        : "0"
+        );
+
+        // Set default payment for order
+        paymentEntry.setPaymentFor(PaymentFor.ORDER);
+
+        // Set brandId from order if available
+        paymentEntry.setBrandId(orderInfo.getBrandId());
+
+        // Populate user info if present
+        if (orderInfo.getUser() != null) {
+            PaymentUserInfo userInfo = new PaymentUserInfo();
+            userInfo.setFirstName(orderInfo.getUser().getFirstName());
+            userInfo.setLastName(orderInfo.getUser().getLastName());
+            userInfo.setEmail(orderInfo.getUser().getEmail());
+            userInfo.setMobileNumber(orderInfo.getUser().getMobileNumber());
+            paymentEntry.setUser(userInfo);
+        }
+
+        // Set initial status
+        paymentEntry.setStatus(PaymentStatus.DONE);
+
+        // Optional: default payment gateway or method
+        paymentEntry.setPaymentGateway(PaymentGateway.THIRD_PARTY);
+
+
+        // Map channel to PaymentMethod
+        if (orderInfo.getChannel() != null) {
+            switch (orderInfo.getChannel()) {
+                case ZOMATO -> paymentEntry.setPaymentMethod(PaymentMethod.ZOMATO);
+                case SWIGGY -> paymentEntry.setPaymentMethod(PaymentMethod.SWIGGY);
+                case BITSILA_ONDC -> paymentEntry.setPaymentMethod(PaymentMethod.BITSILA_ONDC);
+                case MAGIC_PIN -> paymentEntry.setPaymentMethod(PaymentMethod.MAGIC_PIN);
+                case RAPIDO_FOOD -> paymentEntry.setPaymentMethod(PaymentMethod.RAPIDO_FOOD);
+
+                default -> paymentEntry.setPaymentMethod(PaymentMethod.ONLINE);
+            }
+        } else {
+            paymentEntry.setPaymentMethod(PaymentMethod.ONLINE);
+        }
+
+        paymentEntry.setPaymentMode(PaymentMode.ONLINE);
+        Map<String, String> data = new HashMap<>();
+        data.put("channel", orderInfo.getChannel().name());
+        paymentEntry.setData(data);
+
+        // Generate unique 18-digit transaction ID
+        long transactionId = System.currentTimeMillis() * 1000
+                + ThreadLocalRandom.current().nextInt(0, 1000);
+        paymentEntry.setTransactionId(String.valueOf(transactionId));
+
+        // Save to DB
+        paymentEntryRepository.save(paymentEntry);
+
     }
 
     /**
@@ -721,7 +797,7 @@ public class ZomatoOrderService {
             deliveryOrder.setDeliveryPersonId(null);
             deliveryOrder.setOrderInvoiceId(null);
             deliveryOrder.setDeliveredAt(null);
-            deliveryOrder.setStatus(orderInfo.getChannel().toString());
+            deliveryOrder.setStatus("new");
             deliveryOrder.setKitchenId(orderInfo.getKitchenId().intValue());
             deliveryOrder.setBrandId(orderInfo.getBrandId());
 

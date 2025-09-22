@@ -1,4 +1,4 @@
-package com.buyer.entity;
+package com.buyer.entity.OrderEnum;
 
 public enum OrderItemType {
     PRODUCT,

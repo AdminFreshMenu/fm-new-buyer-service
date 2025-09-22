@@ -1,6 +1,6 @@
 package com.buyer.dto;
 
-import com.buyer.entity.OrderAdditionalData;
+import com.buyer.entity.OrderEnum.OrderAdditionalData;
 
 public class OrderAdditionalDetailsDto {
     
