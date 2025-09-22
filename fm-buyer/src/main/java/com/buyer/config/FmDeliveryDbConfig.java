@@ -2,7 +2,7 @@ package com.buyer.config;
 
 import jakarta.persistence.EntityManagerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.jdbc.DataSourceBuilder;
 import org.springframework.boot.orm.jpa.EntityManagerFactoryBuilder;
 import org.springframework.context.annotation.Bean;
@@ -24,13 +24,25 @@ import java.util.Map;
 )
 public class FmDeliveryDbConfig {
 
+    @Value("${spring.datasource.delivery.url}")
+    private String deliveryDbUrl;
+
+    @Value("${spring.datasource.delivery.username}")
+    private String deliveryDbUsername;
+
+    @Value("${spring.datasource.delivery.password}")
+    private String deliveryDbPassword;
+
+    @Value("${spring.datasource.delivery.driver-class-name}")
+    private String deliveryDbDriverClassName;
+
     @Bean(name = "fmDeliveryDataSource")
     public DataSource fmDeliveryDataSource() {
         return DataSourceBuilder.create()
-                .driverClassName("com.mysql.cj.jdbc.Driver")
-                .url("jdbc:mysql://localhost:3306/fm_delivery_db_buyer?useSSL=false&serverTimezone=Asia/Kolkata")
-                .username("root")
-                .password("root")
+                .url(deliveryDbUrl)
+                .username(deliveryDbUsername)
+                .password(deliveryDbPassword)
+                .driverClassName(deliveryDbDriverClassName)
                 .build();
     }
 

@@ -4,6 +4,7 @@ import com.buyer.entity.OrderItem;
 import com.buyer.entity.OrderEnum.OrderItemType;
 import com.buyer.repository.OrderItemRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureWebMvc;
@@ -35,6 +36,7 @@ public class ZomatoControllerTest {
 
     private MockMvc mockMvc;
 
+    @BeforeEach
     public void setup() {
         mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build();
     }
@@ -42,7 +44,6 @@ public class ZomatoControllerTest {
 
     @Test
     public void testCreateOrderEndpoint() throws Exception {
-        setup();
         // Use timestamp to create unique order ID for each test run
         String uniqueOrderId = "TEST" + System.currentTimeMillis();
         String orderJson = "{\n" +
@@ -77,10 +78,9 @@ public class ZomatoControllerTest {
 
     @Test
     public void testCreateOrderWithoutAuth() throws Exception {
-        setup();
         String orderJson = "{\n" +
                 "  \"order\": {\n" +
-                "    \"orderId\": \"TEST789\"\n" +
+                "    \"order_id\": \"TEST789\"\n" +
                 "  }\n" +
                 "}";
 
@@ -94,7 +94,6 @@ public class ZomatoControllerTest {
 
     @Test
     public void testCreateOrderWithDishes() throws Exception {
-        setup();
         // Use timestamp to create unique order ID for each test run
         String uniqueOrderId = "DISH_TEST" + System.currentTimeMillis();
         String orderJsonWithDishes = "{\n" +

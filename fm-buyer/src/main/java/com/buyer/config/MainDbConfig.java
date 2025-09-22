@@ -2,7 +2,7 @@ package com.buyer.config;
 
 import jakarta.persistence.EntityManagerFactory;
 import org.springframework.beans.factory.annotation.Qualifier;
-import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.jdbc.DataSourceBuilder;
 import org.springframework.boot.orm.jpa.EntityManagerFactoryBuilder;
 import org.springframework.context.annotation.Bean;
@@ -25,14 +25,26 @@ import java.util.Map;
 )
 public class MainDbConfig {
 
+    @Value("${spring.datasource.main.url}")
+    private String mainDbUrl;
+
+    @Value("${spring.datasource.main.username}")
+    private String mainDbUsername;
+
+    @Value("${spring.datasource.main.password}")
+    private String mainDbPassword;
+
+    @Value("${spring.datasource.main.driver-class-name}")
+    private String mainDbDriverClassName;
+
     @Primary
     @Bean(name = "mainDataSource")
     public DataSource mainDataSource() {
         return DataSourceBuilder.create()
-                .driverClassName("com.mysql.cj.jdbc.Driver")
-                .url("jdbc:mysql://localhost:3306/fmmaindb_buyer?useSSL=false&serverTimezone=Asia/Kolkata")
-                .username("root")
-                .password("root")
+                .url(mainDbUrl)
+                .username(mainDbUsername)
+                .password(mainDbPassword)
+                .driverClassName(mainDbDriverClassName)
                 .build();
     }
 
@@ -64,4 +76,3 @@ public class MainDbConfig {
         return new JpaTransactionManager(entityManagerFactory);
     }
 }
-
