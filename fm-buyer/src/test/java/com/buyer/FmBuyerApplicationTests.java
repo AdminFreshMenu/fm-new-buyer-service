@@ -1,13 +1,15 @@
 package com.buyer;
 
-import org.junit.jupiter.api.Test;
+import org.testng.annotations.Test;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.test.context.testng.AbstractTestNGSpringContextTests;
 
 @SpringBootTest
-class FmBuyerApplicationTests {
+public class FmBuyerApplicationTests extends AbstractTestNGSpringContextTests {
 
-	@Test
-	void contextLoads() {
+	@Test(groups = {"smoke"}, description = "Test that the Spring context loads properly")
+	public void contextLoads() {
+		// This test will pass if the application context loads successfully
 	}
 
 }

@@ -2,28 +2,30 @@ package com.buyer;
 
 import com.buyer.entity.OrderItem;
 import com.buyer.entity.OrderEnum.OrderItemType;
+import com.buyer.repository.OrderAdditionalDetailsRepository;
+import com.buyer.repository.OrderInfoRepository;
 import com.buyer.repository.OrderItemRepository;
+import com.buyer.repository.PaymentEntryRepository;
+import com.buyer.service.TestDataCleanupService;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
+import org.testng.annotations.*;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureWebMvc;
 import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.testng.AbstractTestNGSpringContextTests;
 import org.springframework.test.web.servlet.MockMvc;
-import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 import org.springframework.web.context.WebApplicationContext;
-
 import java.util.List;
 
-import static org.junit.jupiter.api.Assertions.*;
+import static org.testng.Assert.*;
 
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
 
 @SpringBootTest
-@AutoConfigureWebMvc
-public class ZomatoControllerTest {
+@AutoConfigureMockMvc
+public class ZomatoControllerTest extends AbstractTestNGSpringContextTests {
 
     @Autowired
     private WebApplicationContext webApplicationContext;
@@ -33,16 +35,49 @@ public class ZomatoControllerTest {
 
     @Autowired
     private OrderItemRepository orderItemRepository;
-
+    
+    @Autowired
+    private TestDataCleanupService testDataCleanupService;
+    
+    // Additional repository dependencies for direct cleanup
+    @Autowired
+    private OrderInfoRepository orderInfoRepository;
+    
+    @Autowired
+    private PaymentEntryRepository paymentEntryRepository;
+    
+    @Autowired
+    private OrderAdditionalDetailsRepository orderAdditionalDetailsRepository;
+    
+    @Autowired
     private MockMvc mockMvc;
 
-    @BeforeEach
-    public void setup() {
-        mockMvc = MockMvcBuilders.webAppContextSetup(webApplicationContext).build();
+    @BeforeMethod
+    public void cleanupBefore() {
+        // Clean up test data before each test based on lastName prefix
+        String[] prefixes = {"TEST", "DISH_TEST"};
+        for (String prefix : prefixes) {
+            paymentEntryRepository.deleteByOrderUserLastNamePrefix(prefix);
+            orderItemRepository.deleteByOrderUserLastNamePrefix(prefix);
+            orderAdditionalDetailsRepository.deleteByOrderUserLastNamePrefix(prefix);
+            orderInfoRepository.deleteByUserLastNamePrefix(prefix);
+        }
+    }
+
+    @AfterMethod
+    public void cleanupAfter() {
+        // Clean up test data after each test based on lastName prefix
+        String[] prefixes = {"TEST", "DISH_TEST"};
+        for (String prefix : prefixes) {
+            paymentEntryRepository.deleteByOrderUserLastNamePrefix(prefix);
+            orderItemRepository.deleteByOrderUserLastNamePrefix(prefix);
+            orderAdditionalDetailsRepository.deleteByOrderUserLastNamePrefix(prefix);
+            orderInfoRepository.deleteByUserLastNamePrefix(prefix);
+        }
     }
 
 
-    @Test
+    @Test(groups = {"api", "smoke"}, priority = 1, description = "Test basic order creation endpoint")
     public void testCreateOrderEndpoint() throws Exception {
         // Use timestamp to create unique order ID for each test run
         String uniqueOrderId = "TEST" + System.currentTimeMillis();
@@ -76,7 +111,7 @@ public class ZomatoControllerTest {
                 .andExpect(jsonPath("$.internalOrderId").exists());
     }
 
-    @Test
+    @Test(groups = {"api", "security"}, priority = 2, description = "Test order creation without authentication")
     public void testCreateOrderWithoutAuth() throws Exception {
         String orderJson = "{\n" +
                 "  \"order\": {\n" +
@@ -92,7 +127,7 @@ public class ZomatoControllerTest {
                 .andExpect(jsonPath("$.message").value("Invalid or missing Auth-Key"));
     }
 
-    @Test
+    @Test(groups = {"api", "integration"}, priority = 3, description = "Test order creation with dishes and addons")
     public void testCreateOrderWithDishes() throws Exception {
         // Use timestamp to create unique order ID for each test run
         String uniqueOrderId = "DISH_TEST" + System.currentTimeMillis();
@@ -182,13 +217,13 @@ public class ZomatoControllerTest {
         assertFalse(orderItems.isEmpty(), "Order items should not be empty");
         
         // Verify we have the expected number of items (2 main dishes + 1 addon)
-        assertEquals(3, orderItems.size(), "Should have 3 order items (2 dishes + 1 addon)");
+        assertEquals(orderItems.size(), 3, "Should have 3 order items (2 dishes + 1 addon)");
         
         // Verify main dishes
         List<OrderItem> mainDishes = orderItems.stream()
                 .filter(item -> item.getOrderItemType() == OrderItemType.PRODUCT)
                 .toList();
-        assertEquals(2, mainDishes.size(), "Should have 2 main dishes");
+        assertEquals(mainDishes.size(), 2, "Should have 2 main dishes");
         
         // Verify Pizza order item
         OrderItem pizzaItem = mainDishes.stream()
@@ -196,9 +231,9 @@ public class ZomatoControllerTest {
                 .findFirst()
                 .orElse(null);
         assertNotNull(pizzaItem, "Pizza order item should exist");
-        assertEquals(2, pizzaItem.getQuantity(), "Pizza quantity should be 2");
-        assertEquals(250, pizzaItem.getSellingPrice(), "Pizza selling price should be 250 rupees");
-        assertEquals(500, pizzaItem.getTsp(), "Pizza TSP should be 500 rupees");
+        assertEquals(pizzaItem.getQuantity(), Integer.valueOf(2), "Pizza quantity should be 2");
+        assertEquals(pizzaItem.getSellingPrice().intValue(), 250, "Pizza selling price should be 250 rupees");
+        assertEquals(pizzaItem.getTsp().intValue(), 500, "Pizza TSP should be 500 rupees");
         
         // Verify Caesar Salad order item
         OrderItem saladItem = mainDishes.stream()
@@ -206,20 +241,20 @@ public class ZomatoControllerTest {
                 .findFirst()
                 .orElse(null);
         assertNotNull(saladItem, "Salad order item should exist");
-        assertEquals(1, saladItem.getQuantity(), "Salad quantity should be 1");
-        assertEquals(180, saladItem.getSellingPrice(), "Salad selling price should be 180 rupees");
-        assertEquals(180, saladItem.getTsp(), "Salad TSP should be 180 rupees");
+        assertEquals(saladItem.getQuantity(), Integer.valueOf(1), "Salad quantity should be 1");
+        assertEquals(saladItem.getSellingPrice().intValue(), 180, "Salad selling price should be 180 rupees");
+        assertEquals(saladItem.getTsp().intValue(), 180, "Salad TSP should be 180 rupees");
         
         // Verify addon
         List<OrderItem> addons = orderItems.stream()
                 .filter(item -> item.getOrderItemType() == OrderItemType.ADDON)
                 .toList();
-        assertEquals(1, addons.size(), "Should have 1 addon");
+        assertEquals(addons.size(), 1, "Should have 1 addon");
         
         OrderItem addonItem = addons.get(0);
-        assertEquals(2001L, addonItem.getProductId(), "Addon product ID should be 2001");
-        assertEquals(1, addonItem.getQuantity(), "Addon quantity should be 1");
-        assertEquals(50, addonItem.getSellingPrice(), "Addon selling price should be 50 rupees");
+        assertEquals(addonItem.getProductId(), Long.valueOf(2001L), "Addon product ID should be 2001");
+        assertEquals(addonItem.getQuantity(), Integer.valueOf(1), "Addon quantity should be 1");
+        assertEquals(addonItem.getSellingPrice().intValue(), 50, "Addon selling price should be 50 rupees");
         assertNotNull(addonItem.getParentOrderItemId(), "Addon should have parent order item ID");
         
         System.out.println("Successfully verified order items processing: " + orderItems.size() + " items saved");

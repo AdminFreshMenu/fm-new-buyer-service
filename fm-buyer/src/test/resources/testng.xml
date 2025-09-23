@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd">
+
+<suite name="FM-Buyer Test Suite" verbose="1" parallel="false" thread-count="1">
+    <parameter name="environment" value="test"/>
+    
+    <!-- Listeners for enhanced reporting -->
+    <listeners>
+        <listener class-name="org.testng.reporters.EmailableReporter2"/>
+        <listener class-name="org.testng.reporters.jq.Main"/>
+        <listener class-name="com.buyer.listeners.CustomTestListener"/>
+    </listeners>
+    
+    <!-- All tests grouped by categories -->
+    <test name="All Tests" preserve-order="true">
+        <groups>
+            <run>
+                <include name="smoke"/>
+                <include name="api"/>
+                <include name="integration"/>
+                <include name="security"/>
+            </run>
+        </groups>
+        
+        <classes>
+            <class name="com.buyer.FmBuyerApplicationTests"/>
+            <class name="com.buyer.ZomatoControllerTest"/>
+        </classes>
+    </test>
+    
+</suite>
