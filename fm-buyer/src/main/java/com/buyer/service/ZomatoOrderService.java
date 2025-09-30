@@ -451,7 +451,7 @@ public class ZomatoOrderService {
     }
 
 
-    private String generateExternalOrderId(Integer brandId, Long orderId) {
+    public static String generateExternalOrderId(Integer brandId, Long orderId) {
         if (brandId == null) {
             return "fm" + orderId;
         }
@@ -777,7 +777,7 @@ public class ZomatoOrderService {
     /**
      * Create OrderAdditionalDetailsDto helper method
      */
-    private OrderAdditionalDetailsDto createOrderAdditionalDetailsDto(Long orderId, OrderAdditionalData orderKey, String orderKeyValue) {
+    public static OrderAdditionalDetailsDto createOrderAdditionalDetailsDto(Long orderId, OrderAdditionalData orderKey, String orderKeyValue) {
         return new OrderAdditionalDetailsDto(orderId, orderKey, orderKeyValue);
     }
     

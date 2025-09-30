@@ -47,6 +47,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 
+import static com.buyer.service.ZomatoOrderService.createOrderAdditionalDetailsDto;
+import static com.buyer.service.ZomatoOrderService.generateExternalOrderId;
+
 @Service
 public class SwiggyOrderService {
 
@@ -294,27 +297,6 @@ public class SwiggyOrderService {
         }
     }
 
-    /**
-     * Generate external order ID based on brand ID
-     */
-    private String generateExternalOrderId(Integer brandId, Long orderId) {
-        if (brandId == null) {
-            return "fm" + orderId;
-        }
-
-        switch (brandId) {
-            case 6:  return "GC"  + orderId;
-            case 8:  return "EDF" + orderId;
-            case 11: return "BS"  + orderId;
-            case 12: return "DB"  + orderId;
-            case 14: return "TC"  + orderId;
-            case 17: return "PC"  + orderId;
-            case 18: return "SS"  + orderId;
-            case 19: return "CFX" + orderId;
-            case 20: return "GG"  + orderId;
-            default: return "fm"  + orderId;
-        }
-    }
 
     /**
      * Save order items from Swiggy request
@@ -574,12 +556,6 @@ public class SwiggyOrderService {
         }
     }
 
-    /**
-     * Create OrderAdditionalDetailsDto helper method
-     */
-    private OrderAdditionalDetailsDto createOrderAdditionalDetailsDto(Long orderId, OrderAdditionalData orderKey, String orderKeyValue) {
-        return new OrderAdditionalDetailsDto(orderId, orderKey, orderKeyValue);
-    }
 
     /**
      * Save order in delivery database
