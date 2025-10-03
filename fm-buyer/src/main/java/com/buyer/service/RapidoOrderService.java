@@ -237,12 +237,12 @@ public class RapidoOrderService {
         orderRepository.save(deliveryOrder);
     }
 
-
     private ResponseEntity<Map<String, Object>> createErrorResponse(String message, HttpStatus status) {
-        Map<String, Object> error = new HashMap<>();
-        error.put("message", "Order creation failed");
-        error.put("errors", message);
-        return new ResponseEntity<>(error, HttpStatus.UNPROCESSABLE_ENTITY);
+        Map<String, Object> response = new HashMap<>();
+        response.put("status", "failed");
+        response.put("message", message);
+        response.put("error_code", status.value());
+        return ResponseEntity.status(status).body(response);
     }
 
     /**

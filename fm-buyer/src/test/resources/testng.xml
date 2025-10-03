@@ -26,6 +26,7 @@
             <class name="com.buyer.FmBuyerApplicationTests"/>
             <class name="com.buyer.ZomatoControllerTest"/>
             <class name="com.buyer.SwiggyControllerTest"/>
+            <class name="com.buyer.RapidoControllerTest"/>
         </classes>
     </test>
     

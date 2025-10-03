@@ -88,7 +88,7 @@ public class ZomatoControllerTest extends AbstractTestNGSpringContextTests {
                 "    \"gross_amount\": 250.50,\n" +
                 "    \"net_amount\": 275.75,\n" +
                 "    \"customer_details\": {\n" +
-                "      \"name\": \"John Doe\",\n" +
+                "      \"name\": \"TEST User\",\n" +
                 "      \"phone_number\": \"+919876543210\",\n" +
                 "      \"email\": \"john@example.com\",\n" +
                 "      \"address\": \"123 Main Street\",\n" +
@@ -138,7 +138,7 @@ public class ZomatoControllerTest extends AbstractTestNGSpringContextTests {
                 "    \"gross_amount\": 550.75,\n" +
                 "    \"net_amount\": 585.50,\n" +
                 "    \"customer_details\": {\n" +
-                "      \"name\": \"John Doe\",\n" +
+                "      \"name\": \"DISH_TEST User\",\n" +
                 "      \"phone_number\": \"+919876543210\",\n" +
                 "      \"email\": \"john.doe@example.com\",\n" +
                 "      \"address\": \"123 Main Street\",\n" +
