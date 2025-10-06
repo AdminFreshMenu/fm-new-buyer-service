@@ -270,7 +270,7 @@ public class SwiggyOrderService {
     /**
      * Parse outlet ID to extract brand_id and kitchen_id
      */
-    private void parseOutletId(OrderInfo orderInfo, String outletIdStr) {
+    public static void parseOutletId(OrderInfo orderInfo, String outletIdStr) {
         try {
             if (outletIdStr.contains("_")) {
                 // Format like "6_1" - split by underscore
