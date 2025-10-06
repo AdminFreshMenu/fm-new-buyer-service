@@ -40,9 +40,9 @@ public interface OrderInfoRepository extends JpaRepository<OrderInfo, Long> {
     @Modifying
     @Query("DELETE FROM OrderInfo o WHERE o.user.lastName LIKE CONCAT(:prefix, '%')")
     void deleteByUserLastNamePrefix(@Param("prefix") String prefix);
-    
-    @Transactional
-    @Modifying
-    @Query("DELETE FROM OrderInfo o WHERE o.user.lastName = :exact")
-    void deleteByUserLastNameExact(@Param("exact") String exact);
+
+    @Query("SELECT o FROM OrderInfo o WHERE o.user.firstName LIKE :pattern")
+    List<OrderInfo> findByUserFirstNameLike(@Param("pattern") String pattern);
+
+
 }

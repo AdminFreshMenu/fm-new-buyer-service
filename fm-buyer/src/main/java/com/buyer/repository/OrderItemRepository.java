@@ -29,6 +29,12 @@ public interface OrderItemRepository extends JpaRepository<OrderItem, Long> {
     @Modifying
     @Query("DELETE FROM OrderItem oi WHERE oi.orderId IN (SELECT o.id FROM OrderInfo o WHERE o.user.lastName LIKE CONCAT(:prefix, '%'))")
     void deleteByOrderUserLastNamePrefix(@Param("prefix") String prefix);
-    
+
+    @Transactional
+    @Modifying
+    @Query("DELETE FROM OrderItem oi WHERE oi.orderId = :orderId")
+    void deleteByOrderId(@Param("orderId") Long orderId);
+
+
     void deleteByOrderIdIn(List<Long> orderIds);
 }

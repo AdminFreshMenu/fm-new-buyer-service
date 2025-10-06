@@ -81,6 +81,39 @@ public class MagicpinService {
             logger.info("MagicPin create_order service invoked at: {}", new java.util.Date());
 
             String magicpinOrderId = String.valueOf(orderRequest.getOrderId());
+
+            if(orderRequest.getOrderId() == null){
+                logger.warn("No order id found in MagicPin order: {}", magicpinOrderId);
+                CreateOrderResponse response = new CreateOrderResponse(
+                        Status.Failed, "No order id found", 422, magicpinOrderId);
+                return ResponseEntity.unprocessableEntity().body(response);
+            }
+
+            if(orderRequest.getItems()==null || orderRequest.getItems().isEmpty()){
+                logger.warn("No items found in MagicPin order: {}", magicpinOrderId);
+                CreateOrderResponse response = new CreateOrderResponse(
+                        Status.SUCCESS, "No items found", 200, magicpinOrderId);
+                return ResponseEntity.ok(response);
+            }
+
+            if(orderRequest.getItems()!=null && !orderRequest.getItems().isEmpty()){
+                for(Item item : orderRequest.getItems()){
+                    if(item.getQuantity() == null || item.getQuantity() <= 0){
+                        logger.warn("Invalid quantity found in MagicPin order: {}", magicpinOrderId);
+                        CreateOrderResponse response = new CreateOrderResponse(
+                                Status.SUCCESS, "Invalid quantity found", 200, magicpinOrderId);
+                        return ResponseEntity.ok(response);
+                    }
+                }
+
+                if(orderRequest.getAmount() == 0.0){
+                    logger.warn("Invalid amount found in MagicPin order: {}", magicpinOrderId);
+                    CreateOrderResponse response = new CreateOrderResponse(
+                            Status.Failed, "Invalid amount found", 422, magicpinOrderId);
+                    return ResponseEntity.unprocessableEntity().body(response);
+                }
+            }
+
             if (orderInfoRepository.findByUserLastNameAndChannel(magicpinOrderId, Channel.MAGIC_PIN).isPresent()) {
                 logger.warn("Duplicate MagicPin order received: {}", magicpinOrderId);
                 CreateOrderResponse response = new CreateOrderResponse(
@@ -124,15 +157,28 @@ public class MagicpinService {
 
         int totalAmount = 0;
         int packagingCharge = 0;
-        for (Item item : orderRequest.getItems()) {
-            totalAmount += item.getAmount();
-            for (Charge charge : item.getCharges()) {
-                packagingCharge += charge.getAmount();
+        if(orderRequest.getItems()!=null && !(orderRequest.getItems()).isEmpty()){
+            for (Item item : orderRequest.getItems()) {
+                totalAmount += item.getAmount();
+                if (item.getCharges() != null && !item.getCharges().isEmpty()) {
+                    for (Charge charge : item.getCharges()) {
+                        packagingCharge += charge.getAmount();
+                    }
+                }
             }
         }
+
         orderInfo.setTotalAmount((float) totalAmount);
-        orderInfo.setOfferAmount(orderRequest.getMerchantFundedDiscount().floatValue());
-        orderInfo.setFinalAmount((float) (totalAmount - orderRequest.getMerchantFundedDiscount() + packagingCharge));
+        if(orderRequest.getMerchantFundedDiscount()!=null)
+        {
+            orderInfo.setOfferAmount(orderRequest.getMerchantFundedDiscount().floatValue());
+            orderInfo.setFinalAmount((float) (totalAmount - orderRequest.getMerchantFundedDiscount() + packagingCharge));
+
+        }else{
+            orderInfo.setOfferAmount(0.0f);
+            orderInfo.setFinalAmount((float) (totalAmount  + packagingCharge));
+        }
+
         orderInfo.setOfferCode("MAGIC_PIN_DISCOUNT");
         orderInfo.setStatus(1);
         orderInfo.setOrderData("Buyer_v2");
@@ -190,9 +236,15 @@ public class MagicpinService {
             orderItem.setSellingPrice(item.getAmount());
             orderItem.setMrp(item.getAmount());
             orderItem.setDiscountAmount(BigDecimal.ZERO);
-            for (Charge charge : item.getCharges()) {
-                orderItem.setPackagingPrice(BigDecimal.valueOf(charge.getAmount()));
+            if(item.getCharges() != null && !(item.getCharges().isEmpty())){
+                for (Charge charge : item.getCharges()) {
+                    orderItem.setPackagingPrice(BigDecimal.valueOf(charge.getAmount()));
+                }
+            }else{
+                orderItem.setPackagingPrice(BigDecimal.ZERO);
+
             }
+
             orderItem.setCashbackAmount(BigDecimal.ZERO);
             orderItem.setcDisc(BigDecimal.ZERO);
             orderItem.setTsp(item.getAmount());
