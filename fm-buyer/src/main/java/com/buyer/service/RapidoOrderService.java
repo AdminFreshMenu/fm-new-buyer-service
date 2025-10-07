@@ -3,6 +3,7 @@ package com.buyer.service;
 import com.buyer.delivery.entity.Order;
 import com.buyer.delivery.repository.OrderRepository;
 import com.buyer.dto.OrderAdditionalDetailsDto;
+import com.buyer.dto.PaymentUserInfo;
 import com.buyer.dto.rapido.Customer;
 import com.buyer.dto.rapido.ItemAddon;
 import com.buyer.dto.rapido.LocationDTO;
@@ -203,6 +204,13 @@ public class RapidoOrderService {
         paymentEntry.setPaymentGateway(PaymentGateway.THIRD_PARTY);
         paymentEntry.setPaymentMethod(PaymentMethod.RAPIDO_FOOD);
         paymentEntry.setPaymentMode(PaymentMode.ONLINE);
+
+        PaymentUserInfo paymentUserInfo = new PaymentUserInfo();
+        paymentUserInfo.setEmail(orderInfo.getUser().getEmail());
+        paymentUserInfo.setFirstName(orderInfo.getUser().getFirstName());
+        paymentUserInfo.setLastName(orderInfo.getUser().getLastName());
+        paymentUserInfo.setMobileNumber(orderInfo.getUser().getMobileNumber());
+        paymentEntry.setUser(paymentUserInfo);
 
         Map<String, String> data = new HashMap<>();
         data.put("channel", orderInfo.getChannel().name());

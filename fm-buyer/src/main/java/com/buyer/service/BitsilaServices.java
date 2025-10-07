@@ -4,20 +4,18 @@ import com.buyer.delivery.entity.Order;
 import com.buyer.delivery.repository.OrderRepository;
 import com.buyer.dto.OrderAdditionalDetailsDto;
 import com.buyer.dto.PaymentUserInfo;
-import com.buyer.dto.magicpin.Address;
-import com.buyer.dto.magicpin.Charge;
-import com.buyer.dto.magicpin.CreateOrderResponse;
-import com.buyer.dto.magicpin.Item;
-import com.buyer.dto.magicpin.MagicpinOrderRequest;
-import com.buyer.dto.magicpin.Status;
+import com.buyer.dto.bitsila.ChargesBreakupDTO;
+import com.buyer.dto.bitsila.OrderItemDTO;
+import com.buyer.dto.bitsila.OrderRequest;
+import com.buyer.dto.bitsila.Response;
 import com.buyer.entity.OrderAdditionalDetails;
 import com.buyer.entity.OrderAddress;
-import com.buyer.entity.OrderEnum.Channel;
-import com.buyer.entity.OrderEnum.OrderAdditionalData;
-import com.buyer.entity.OrderEnum.OrderItemType;
 import com.buyer.entity.OrderInfo;
 import com.buyer.entity.OrderUserInfo;
 import com.buyer.entity.PaymentEntry;
+import com.buyer.entity.OrderEnum.Channel;
+import com.buyer.entity.OrderEnum.OrderAdditionalData;
+import com.buyer.entity.OrderEnum.OrderItemType;
 import com.buyer.entity.PaymentEnum.PaymentFor;
 import com.buyer.entity.PaymentEnum.PaymentGateway;
 import com.buyer.entity.PaymentEnum.PaymentMethod;
@@ -30,12 +28,6 @@ import com.buyer.repository.OrderItemRepository;
 import com.buyer.repository.PaymentEntryRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.transaction.Transactional;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.http.HttpStatus;
-import org.springframework.http.ResponseEntity;
-import org.springframework.stereotype.Service;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -46,14 +38,21 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.stereotype.Service;
+import org.springframework.util.CollectionUtils;
+
 import static com.buyer.service.SwiggyOrderService.parseOutletId;
 import static com.buyer.service.ZomatoOrderService.createOrderAdditionalDetailsDto;
 import static com.buyer.service.ZomatoOrderService.generateExternalOrderId;
 
 @Service
-public class MagicpinService {
-
-    private static final Logger logger = LoggerFactory.getLogger(MagicpinService.class);
+public class BitsilaServices {
+    private static final Logger logger = LoggerFactory.getLogger(BitsilaServices.class);
 
     @Autowired
     private OrderInfoRepository orderInfoRepository;
@@ -77,52 +76,48 @@ public class MagicpinService {
     private PaymentEntryRepository paymentEntryRepository;
 
     @Transactional
-    public ResponseEntity<CreateOrderResponse> createOrder(MagicpinOrderRequest orderRequest, Integer brandId) {
+    public ResponseEntity<Response> createOrder(String authKey, OrderRequest orderRequest) {
         try {
-            logger.info("MagicPin create_order service invoked at: {}", new java.util.Date());
+            logger.info("Bitsila create_order service invoked at: {}", new java.util.Date());
 
-            String magicpinOrderId = String.valueOf(orderRequest.getOrderId());
+            String bitsilaOrderId = orderRequest.getOrder().getOrderNo();
 
-            if(orderRequest.getOrderId() == null){
-                logger.warn("No order id found in MagicPin order: {}", magicpinOrderId);
-                CreateOrderResponse response = new CreateOrderResponse(
-                        Status.Failed, "No order id found", 422, magicpinOrderId);
+            if (bitsilaOrderId == null) {
+                logger.warn("No order id found in Bitsila order: {}", bitsilaOrderId);
+                Response response = new Response("No order id found", bitsilaOrderId, "422", false);
                 return ResponseEntity.unprocessableEntity().body(response);
             }
 
-            if(orderRequest.getItems()==null || orderRequest.getItems().isEmpty()){
-                logger.warn("No items found in MagicPin order: {}", magicpinOrderId);
-                CreateOrderResponse response = new CreateOrderResponse(
-                        Status.SUCCESS, "No items found", 200, magicpinOrderId);
-                return ResponseEntity.ok(response);
+            if (orderRequest.getOrderItems() == null || orderRequest.getOrderItems().isEmpty()) {
+                logger.warn("No items found in Bitsila order: {}", bitsilaOrderId);
+                Response response = new Response("No items found", bitsilaOrderId, "422", false);
+                return ResponseEntity.unprocessableEntity().body(response);
             }
 
-            if(orderRequest.getItems()!=null && !orderRequest.getItems().isEmpty()){
-                for(Item item : orderRequest.getItems()){
-                    if(item.getQuantity() == null || item.getQuantity() <= 0){
-                        logger.warn("Invalid quantity found in MagicPin order: {}", magicpinOrderId);
-                        CreateOrderResponse response = new CreateOrderResponse(
-                                Status.SUCCESS, "Invalid quantity found", 200, magicpinOrderId);
-                        return ResponseEntity.ok(response);
+            if (orderRequest.getOrderItems() != null && !orderRequest.getOrderItems().isEmpty()) {
+                for (OrderItemDTO item : orderRequest.getOrderItems()) {
+                    if (item.getQuantity() == null || item.getQuantity() <= 0) {
+                        logger.warn("Invalid quantity found in Bitsila order: {}", bitsilaOrderId);
+                        Response response = new Response("Invalid quantity found", bitsilaOrderId, "422", false);
+                        return ResponseEntity.unprocessableEntity().body(response);
                     }
                 }
 
-                if(orderRequest.getAmount() == 0.0){
-                    logger.warn("Invalid amount found in MagicPin order: {}", magicpinOrderId);
-                    CreateOrderResponse response = new CreateOrderResponse(
-                            Status.Failed, "Invalid amount found", 422, magicpinOrderId);
+                if (orderRequest.getOrder().getTotalAmount() == 0.0) {
+                    logger.warn("Invalid amount found in Bitsila order: {}", bitsilaOrderId);
+                    Response response = new Response("Invalid amount found", bitsilaOrderId, "422", false);
                     return ResponseEntity.unprocessableEntity().body(response);
                 }
             }
 
-            if (orderInfoRepository.findByUserLastNameAndChannel(magicpinOrderId, Channel.MAGIC_PIN).isPresent()) {
-                logger.warn("Duplicate MagicPin order received: {}", magicpinOrderId);
-                CreateOrderResponse response = new CreateOrderResponse(
-                        Status.SUCCESS, "Order already exists", 200, magicpinOrderId);
+            if (orderInfoRepository.findByUserLastNameAndChannel(bitsilaOrderId, Channel.BITSILA_ONDC).isPresent()) {
+                logger.warn("Duplicate Bitsila order received: {}", bitsilaOrderId);
+                Response response = new Response("Order already exists", bitsilaOrderId, "200", true);
                 return ResponseEntity.ok(response);
             }
 
-            OrderInfo orderInfo = mapMagicpinOrderToOrderInfo(orderRequest, brandId);
+
+            OrderInfo orderInfo = mapBitsilaOrderToOrderInfo(orderRequest);
             OrderInfo savedOrder = orderInfoRepository.save(orderInfo);
 
             String externalOrderId = generateExternalOrderId(savedOrder.getBrandId(), savedOrder.getId());
@@ -130,92 +125,72 @@ public class MagicpinService {
             savedOrder = orderInfoRepository.save(savedOrder);
 
             saveOrderAdditionalDetails(orderRequest, savedOrder.getId(), savedOrder);
-            saveMagicpinOrderItems(orderRequest.getItems(), savedOrder.getId());
+            saveBitsilaOrderItems(orderRequest.getOrderItems(), savedOrder.getId(), savedOrder.getBrandId());
             savePaymentEntry(savedOrder);
             saveOrderInDeliveryDatabase(savedOrder);
 
-            logger.info("MagicPin order created: internalId={}, magicpinOrderId={}, externalOrderId={}",
-                    savedOrder.getId(), magicpinOrderId, externalOrderId);
+            logger.info("Bitsila order created: internalId={}, bitsilaOrderId={}, externalOrderId={}",
+                    savedOrder.getId(), bitsilaOrderId, externalOrderId);
 
-            CreateOrderResponse response = new CreateOrderResponse(
-                    Status.SUCCESS, "Order Successfully submitted", 200, externalOrderId);
+            Response response = new Response("Order Successfully submitted", externalOrderId, "200", true);
             return ResponseEntity.ok(response);
 
         } catch (Exception e) {
-            logger.error("Error in MagicPin create order service", e);
-            CreateOrderResponse errorResponse = new CreateOrderResponse(
-                    Status.Failed, e.getMessage(), 422, null);
+            logger.error("Error in Bitsila create order service", e);
+            Response errorResponse = new Response(e.getMessage(), null, "422", false);
             return ResponseEntity.status(HttpStatus.UNPROCESSABLE_ENTITY).body(errorResponse);
         }
     }
 
-    private OrderInfo mapMagicpinOrderToOrderInfo(MagicpinOrderRequest orderRequest, Integer brandId) {
+    private OrderInfo mapBitsilaOrderToOrderInfo(OrderRequest orderRequest) {
         OrderInfo orderInfo = new OrderInfo();
 
-        orderInfo.setExternalOrderId(String.valueOf(orderRequest.getOrderId()));
-        orderInfo.setBrandId(brandId);
-        orderInfo.setChannel(Channel.MAGIC_PIN);
+        parseOutletId(orderInfo, orderRequest.getOrder().getOutletRefId());
+        orderInfo.setChannel(Channel.BITSILA_ONDC);
 
-        int totalAmount = 0;
-        int packagingCharge = 0;
-        if(orderRequest.getItems()!=null && !(orderRequest.getItems()).isEmpty()){
-            for (Item item : orderRequest.getItems()) {
-                totalAmount += item.getAmount();
-                if (item.getCharges() != null && !item.getCharges().isEmpty()) {
-                    for (Charge charge : item.getCharges()) {
-                        packagingCharge += charge.getAmount();
-                    }
+        orderInfo.setTotalAmount(orderRequest.getOrder().getSubTotal().floatValue());
+
+        int offeramount = 0;
+        double totalPackagingCharge = 0;
+        double amount = 0;
+        for (OrderItemDTO itemDTO : orderRequest.getOrderItems()) {
+            offeramount += itemDTO.getTotalDiscountAmount();
+            amount += itemDTO.getPrice();
+            if (!CollectionUtils.isEmpty(itemDTO.getChargesBreakup())) {
+                for (ChargesBreakupDTO charge : itemDTO.getChargesBreakup()) {
+                    if (charge.getName().equalsIgnoreCase("packaging_charges"))
+                        totalPackagingCharge += (charge.getAmount() != null) ? charge.getAmount() : 0;
                 }
+                orderInfo.setPackagingCharges(new BigDecimal(totalPackagingCharge));
             }
         }
 
-        orderInfo.setTotalAmount((float) totalAmount);
-        if(orderRequest.getMerchantFundedDiscount()!=null)
-        {
-            orderInfo.setOfferAmount(orderRequest.getMerchantFundedDiscount().floatValue());
-            orderInfo.setFinalAmount((float) (totalAmount - orderRequest.getMerchantFundedDiscount() + packagingCharge));
+        orderInfo.setOfferAmount((float) offeramount);
+        orderInfo.setFinalAmount((float) amount + (float) totalPackagingCharge);
 
-        }else{
-            orderInfo.setOfferAmount(0.0f);
-            orderInfo.setFinalAmount((float) (totalAmount  + packagingCharge));
-        }
-
-        orderInfo.setOfferCode("MAGIC_PIN_DISCOUNT");
+        orderInfo.setOfferCode("BITSILA_DISCOUNT");
         orderInfo.setStatus(1);
         orderInfo.setOrderData("Buyer_v2");
-        orderInfo.setPackagingCharges(BigDecimal.valueOf(packagingCharge));
-
-        // Set kitchen ID from merchant data or default to 1
-        if (orderRequest.getMerchantData() != null && orderRequest.getMerchantData().getClientId() != null) {
-            String clientId = orderRequest.getMerchantData().getClientId();
-            parseOutletId(orderInfo, clientId);
-        }
-
-        // Set user info
         OrderUserInfo userInfo = new OrderUserInfo();
-        userInfo.setFirstName(orderRequest.getUserName());
-        userInfo.setLastName(String.valueOf(orderRequest.getOrderId()));
-        userInfo.setMobileNumber(orderRequest.getPhoneNo());
-        userInfo.setEmail(orderRequest.getUserName() + "@magicpin.com");
+        userInfo.setFirstName(orderRequest.getCustomer().getName());
+        userInfo.setLastName(orderRequest.getOrder().getOrderNo());
+        userInfo.setMobileNumber(orderRequest.getCustomer().getPhoneNumber());
+        userInfo.setEmail(orderRequest.getCustomer().getEmail());
         orderInfo.setUser(userInfo);
 
-        // Set shipping address
-        if (orderRequest.getShipingAddress() != null) {
-            Address shippingAddr = orderRequest.getShipingAddress();
+        if (orderRequest.getCustomer().getAddress() != null) {
+            com.buyer.dto.bitsila.AddressDTO shippingAddr = orderRequest.getCustomer().getAddress();
             OrderAddress address = new OrderAddress();
-            address.setFirstName(orderRequest.getUserName());
-            address.setLastName(String.valueOf(orderRequest.getOrderId()));
-            address.setAddressLine1(shippingAddr.getAddressLine1());
-            address.setAddressLine2(shippingAddr.getAddressLine2());
+            address.setFirstName(orderRequest.getCustomer().getName());
+            address.setLastName(orderRequest.getOrder().getOrderNo());
+            address.setAddressLine1(shippingAddr.getAddress1());
+            address.setAddressLine2(shippingAddr.getLandmark());
             address.setCity(shippingAddr.getCity());
-            address.setState(shippingAddr.getState());
+            address.setState(shippingAddr.getCountry());
             address.setPincode(shippingAddr.getPincode());
-            address.setMobileNumber(orderRequest.getPhoneNo());
-
-            if (shippingAddr.getLat() != null && shippingAddr.getLon() != null) {
-                address.setLat(String.valueOf(shippingAddr.getLat()));
-                address.setLon(String.valueOf(shippingAddr.getLon()));
-            }
+            address.setMobileNumber(orderRequest.getCustomer().getPhoneNumber());
+            address.setLat(String.valueOf(shippingAddr.getLatitude()));
+            address.setLon(String.valueOf(shippingAddr.getLongitude()));
 
             OrderAddress savedAddress = orderAddressRepository.save(address);
             orderInfo.setShippingAddress(savedAddress);
@@ -225,32 +200,31 @@ public class MagicpinService {
         return orderInfo;
     }
 
-    private void saveMagicpinOrderItems(List<Item> items, Long orderId) {
+    private void saveBitsilaOrderItems(List<OrderItemDTO> items, Long orderId, int brandId) {
         if (items == null || items.isEmpty()) return;
 
-        for (Item item : items) {
+        for (OrderItemDTO item : items) {
             com.buyer.entity.OrderItem orderItem = new com.buyer.entity.OrderItem();
             orderItem.setOrderId(orderId);
             orderItem.setOrderItemType(OrderItemType.PRODUCT);
-            orderItem.setProductId(Long.valueOf(item.getThirdPartyId()));
-            orderItem.setQuantity(item.getQuantity());
-            orderItem.setSellingPrice(item.getAmount());
-            orderItem.setMrp(item.getAmount());
-            orderItem.setDiscountAmount(BigDecimal.ZERO);
-            if(item.getCharges() != null && !(item.getCharges().isEmpty())){
-                for (Charge charge : item.getCharges()) {
-                    orderItem.setPackagingPrice(BigDecimal.valueOf(charge.getAmount()));
-                }
-            }else{
-                orderItem.setPackagingPrice(BigDecimal.ZERO);
 
+            if (brandId == 1) {
+                orderItem.setProductId(Long.valueOf(item.getRefId()));
+            } else {
+                String[] refId = (item.getRefId()).split("_");
+                orderItem.setProductId(Long.parseLong(refId[1]));
             }
 
+
+            orderItem.setQuantity(item.getQuantity());
+            orderItem.setSellingPrice(item.getPrice());
+            orderItem.setMrp(item.getPrice());
+            orderItem.setDiscountAmount(BigDecimal.ZERO);
+            orderItem.setPackagingPrice(BigDecimal.valueOf(item.getCharges()));
             orderItem.setCashbackAmount(BigDecimal.ZERO);
             orderItem.setcDisc(BigDecimal.ZERO);
-            orderItem.setTsp(item.getAmount());
+            orderItem.setTsp(item.getPrice());
             orderItemRepository.save(orderItem);
-
         }
     }
 
@@ -262,7 +236,7 @@ public class MagicpinService {
         paymentEntry.setBrandId(orderInfo.getBrandId());
         paymentEntry.setStatus(PaymentStatus.DONE);
         paymentEntry.setPaymentGateway(PaymentGateway.THIRD_PARTY);
-        paymentEntry.setPaymentMethod(PaymentMethod.MAGIC_PIN);
+        paymentEntry.setPaymentMethod(PaymentMethod.BITSILA_ONDC);
         paymentEntry.setPaymentMode(PaymentMode.ONLINE);
 
         PaymentUserInfo paymentUserInfo = new PaymentUserInfo();
@@ -271,6 +245,7 @@ public class MagicpinService {
         paymentUserInfo.setLastName(orderInfo.getUser().getLastName());
         paymentUserInfo.setMobileNumber(orderInfo.getUser().getMobileNumber());
         paymentEntry.setUser(paymentUserInfo);
+
 
         Map<String, String> data = new HashMap<>();
         data.put("channel", orderInfo.getChannel().name());
@@ -305,25 +280,21 @@ public class MagicpinService {
         orderRepository.save(deliveryOrder);
     }
 
-    private void saveOrderAdditionalDetails(MagicpinOrderRequest orderRequest, Long orderId, OrderInfo orderInfo) {
+    private void saveOrderAdditionalDetails(OrderRequest orderRequest, Long orderId, OrderInfo orderInfo) {
         try {
             List<OrderAdditionalDetailsDto> additionalDetailsDtos = new ArrayList<>();
 
-            // MagicPin Order ID
-            additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.MAGIC_PIN_ORDER_ID,
-                    String.valueOf(orderRequest.getOrderId())));
+            additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.BITSILA_ORDER_ID,
+                    orderRequest.getOrder().getOrderNo()));
 
-            // Amount Balance
             additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.ORDER_AMOUNT_BALANCE,
-                    String.valueOf(orderRequest.getAmount())));
+                    String.valueOf(orderRequest.getOrder().getTotalAmount())));
 
-            // Amount Paid
             additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.ORDER_AMOUNT_PAID,
-                    String.valueOf(orderRequest.getAmount())));
+                    String.valueOf(orderRequest.getOrder().getTotalAmount())));
 
-            // Delivery Channel
             additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.DELIVERY_CHANNEL,
-                    Channel.MAGIC_PIN.name()));
+                    Channel.BITSILA_ONDC.name()));
 
             additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.EXPECTED_KITCHEN_ID,
                     orderInfo.getKitchenId().toString()));
@@ -331,14 +302,13 @@ public class MagicpinService {
             additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.IS_EXPRESS_CHECK_OUT,
                     "true"));
 
-            additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.MAGIC_PIN_OTP,
-                    orderRequest.getRiderOTP()));
-
             additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.NOTES,
-                    orderRequest.getNote()));
+                    orderRequest.getOrder().getNotes()));
 
+            if (orderRequest.getOrder().getExtraInfo() != null && orderRequest.getOrder().getExtraInfo().getFlashOrder() != null) {
+                additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.FLASH_ORDER, String.valueOf(orderRequest.getOrder().getExtraInfo().getFlashOrder())));
+            }
 
-            // Save all additional details
             for (OrderAdditionalDetailsDto dto : additionalDetailsDtos) {
                 OrderAdditionalDetails detail = new OrderAdditionalDetails();
                 detail.setOrderId(dto.getOrderId());

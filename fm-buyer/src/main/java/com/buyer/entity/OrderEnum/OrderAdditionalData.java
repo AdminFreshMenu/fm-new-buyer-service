@@ -23,5 +23,7 @@ public enum OrderAdditionalData {
     PRODUCT_VARIANT_NAME,
     RAPIDO_FOOD_ORDER_ID,
     MAGIC_PIN_ORDER_ID,
-    MAGIC_PIN_OTP
+    MAGIC_PIN_OTP,
+    BITSILA_ORDER_ID,
+    FLASH_ORDER
 }
