@@ -44,5 +44,8 @@ public interface OrderInfoRepository extends JpaRepository<OrderInfo, Long> {
     @Query("SELECT o FROM OrderInfo o WHERE o.user.firstName LIKE :pattern")
     List<OrderInfo> findByUserFirstNameLike(@Param("pattern") String pattern);
 
+    @Query("SELECT o FROM OrderInfo o WHERE o.user.lastName LIKE CONCAT(:pattern, '%')")
+    List<OrderInfo> findByUserLastNameLike(@Param("pattern") String pattern);
+
 
 }

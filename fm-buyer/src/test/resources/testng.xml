@@ -28,6 +28,7 @@
             <class name="com.buyer.SwiggyControllerTest"/>
             <class name="com.buyer.RapidoControllerTest"/>
             <class name="com.buyer.MagicPinControllerTest"/>
+            <class name="com.buyer.BitsilaControllerTest"/>
         </classes>
     </test>
     

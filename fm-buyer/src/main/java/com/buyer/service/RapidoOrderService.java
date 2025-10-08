@@ -1,7 +1,7 @@
 package com.buyer.service;
 
-import com.buyer.delivery.entity.Order;
-import com.buyer.delivery.repository.OrderRepository;
+import com.buyer.deliveryDB.entity.Order;
+import com.buyer.deliveryDB.repository.OrderRepository;
 import com.buyer.dto.OrderAdditionalDetailsDto;
 import com.buyer.dto.PaymentUserInfo;
 import com.buyer.dto.rapido.Customer;
@@ -35,7 +35,6 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.stereotype.Service;
-import org.springframework.util.StringUtils;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;

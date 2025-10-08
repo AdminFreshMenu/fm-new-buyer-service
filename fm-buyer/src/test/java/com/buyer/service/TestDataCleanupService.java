@@ -33,8 +33,8 @@ public class TestDataCleanupService {
     
     @Autowired
     private OrderAdditionalDetailsRepository orderAdditionalDetailsRepository;
-    
-    private static final List<String> TEST_PREFIXES = Arrays.asList("TEST", "DISH_TEST");
+
+    private static final List<String> TEST_PREFIXES = Arrays.asList("TEST", "DISH_TEST", "123", "SWIGGY_TEST", "SW_TEST", "RF");
     
     /**
      * Clean up all test data for orders with external order IDs starting with test prefixes
@@ -67,24 +67,35 @@ public class TestDataCleanupService {
         logger.debug("Cleaning up test data for prefix: {}", prefix);
         
         try {
+            // Use last-name based deletes so we remove test data created by controller tests
             // 1. Delete Order Items first (foreign key dependency)
-            orderItemRepository.deleteByOrderExternalOrderIdPrefix(prefix);
-            logger.debug("Cleaned up order items for prefix: {}", prefix);
-            
+            orderItemRepository.deleteByOrderUserLastNamePrefix(prefix);
+            logger.debug("Cleaned up order items for lastName prefix: {}", prefix);
+
             // 2. Delete Order Additional Details
-            orderAdditionalDetailsRepository.deleteByOrderExternalOrderIdPrefix(prefix);
-            logger.debug("Cleaned up order additional details for prefix: {}", prefix);
-            
+            orderAdditionalDetailsRepository.deleteByOrderUserLastNamePrefix(prefix);
+            logger.debug("Cleaned up order additional details for lastName prefix: {}", prefix);
+
             // 3. Delete Payment Entries
-            paymentEntryRepository.deleteByOrderExternalOrderIdPrefix(prefix);
-            logger.debug("Cleaned up payment entries for prefix: {}", prefix);
-            
+            paymentEntryRepository.deleteByOrderUserLastNamePrefix(prefix);
+            logger.debug("Cleaned up payment entries for lastName prefix: {}", prefix);
+
             // 4. Finally delete Order Info (parent record)
-            orderInfoRepository.deleteByExternalOrderIdPrefix(prefix);
-            logger.debug("Cleaned up order info for prefix: {}", prefix);
-            
+            orderInfoRepository.deleteByUserLastNamePrefix(prefix);
+            logger.debug("Cleaned up order info for lastName prefix: {}", prefix);
+
+//            List<OrderInfo> orderInfos = orderInfoRepository.findByUserFirstNameLike("test");
+//
+//              logger.debug("test order ids" + orderInfos.size());
+//              for (Long orderId : orderInfos.stream().map(OrderInfo::getId).collect(Collectors.toList())) {
+//                paymentEntryRepository.deleteByOrderId(orderId);
+//                orderItemRepository.deleteByOrderId(orderId);
+//                orderAdditionalDetailsRepository.deleteByOrderId(orderId);
+//                orderInfoRepository.deleteById(orderId); // finally delete the order itself
+//              }
+
         } catch (Exception e) {
-            logger.error("Error during cleanup for prefix: {}", prefix, e);
+            logger.error("Error during cleanup for lastName prefix: {}", prefix, e);
             throw e; // Re-throw to trigger transaction rollback
         }
     }
@@ -94,7 +105,7 @@ public class TestDataCleanupService {
      */
     public long getTestOrderCount() {
         return TEST_PREFIXES.stream()
-                .mapToLong(prefix -> orderInfoRepository.findByExternalOrderIdStartingWith(prefix).size())
+                .mapToLong(prefix -> orderInfoRepository.findByUserLastNameLike(prefix + "%").size())
                 .sum();
     }
     

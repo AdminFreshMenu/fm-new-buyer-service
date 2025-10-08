@@ -1,7 +1,7 @@
 package com.buyer.service;
 
-import com.buyer.delivery.entity.Order;
-import com.buyer.delivery.repository.OrderRepository;
+import com.buyer.deliveryDB.entity.Order;
+import com.buyer.deliveryDB.repository.OrderRepository;
 import com.buyer.dto.OrderAdditionalDetailsDto;
 import com.buyer.dto.PaymentUserInfo;
 import com.buyer.dto.magicpin.Address;

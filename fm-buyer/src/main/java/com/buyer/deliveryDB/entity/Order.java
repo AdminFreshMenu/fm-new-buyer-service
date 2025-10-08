@@ -1,10 +1,9 @@
-package com.buyer.delivery.entity;
+package com.buyer.deliveryDB.entity;
 
 import jakarta.persistence.*;
 import java.io.Serializable;
 import java.sql.Timestamp;
 import java.time.LocalDateTime;
-import java.time.ZoneId;
 
 @Entity
 @Table(name = "`order`")
