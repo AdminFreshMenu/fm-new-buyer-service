@@ -18,7 +18,7 @@ import java.util.Map;
 
 @Configuration
 @EnableJpaRepositories(
-        basePackages = "com.buyer.delivery.repository",
+        basePackages = "com.buyer.deliveryDB.repository",
         entityManagerFactoryRef = "fmDeliveryEntityManagerFactory",
         transactionManagerRef = "fmDeliveryTransactionManager"
 )
@@ -60,7 +60,7 @@ public class FmDeliveryDbConfig {
         
         return builder
                 .dataSource(dataSource)
-                .packages("com.buyer.delivery.entity")
+                .packages("com.buyer.deliveryDB.entity")
                 .persistenceUnit("fmDelivery")
                 .properties(properties)
                 .build();
