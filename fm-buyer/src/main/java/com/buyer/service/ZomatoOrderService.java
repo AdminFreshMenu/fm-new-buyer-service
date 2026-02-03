@@ -1,5 +1,15 @@
 package com.buyer.service;
 
+import com.buyer.dto.redis.MediaDTO;
+import com.buyer.dto.redis.MediaWrapperDTO;
+import com.buyer.dto.redis.ProductDTORedis;
+import com.buyer.entity.MongoDB.MongoOrder;
+import com.buyer.entity.MongoDB.dto.DimensionType;
+import com.buyer.entity.MongoDB.dto.OMSPaymentDetail;
+import com.buyer.entity.MongoDB.dto.OrderStatusDto;
+import com.buyer.entity.MongoDB.dto.ShopifyAddress;
+import com.buyer.entity.MongoDB.dto.ShopifyDiscountCode;
+import com.buyer.entity.MongoDB.dto.ShopifyOrderLineItem;
 import com.buyer.entity.OrderEnum.Channel;
 import com.buyer.entity.OrderAddress;
 import com.buyer.entity.OrderEnum.OrderAdditionalData;
@@ -16,6 +26,7 @@ import com.buyer.entity.PaymentEnum.PaymentMethod;
 import com.buyer.entity.PaymentEnum.PaymentMode;
 import com.buyer.entity.PaymentEnum.PaymentStatus;
 import com.buyer.dto.PaymentUserInfo;
+import com.buyer.repository.MongoDB.OrdersRepository;
 import com.buyer.repository.OrderAddressRepository;
 import com.buyer.repository.OrderAdditionalDetailsRepository;
 import com.buyer.repository.OrderInfoRepository;
@@ -23,8 +34,10 @@ import com.buyer.repository.OrderItemRepository;
 import com.buyer.deliveryDB.repository.OrderRepository;
 import com.buyer.deliveryDB.entity.Order;
 import com.buyer.repository.PaymentEntryRepository;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -38,6 +51,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Date;
+import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -70,6 +84,11 @@ public class ZomatoOrderService {
 
     @Autowired
     private PaymentEntryRepository paymentEntryRepository;
+
+    @Autowired
+    private OrdersRepository ordersRepository; // MongoDB repository
+    @Autowired
+    private RedisService redisService;
 
     @Transactional
     public ResponseEntity<Map<String, Object>> createOrder(String orderJson) {
@@ -110,15 +129,18 @@ public class ZomatoOrderService {
             SaveOrderItems(order, savedOrder.getId());
             
             // Save additional order details
-            saveOrderAdditionalDetails(order, savedOrder.getId(), savedOrder);
-            
+            List<OrderAdditionalDetailsDto> orderAdditionalDetailsDtos = saveOrderAdditionalDetails(order, savedOrder.getId(), savedOrder);
+
             // Save order in delivery database
             saveOrderInDeliveryDatabase(savedOrder);
 
             // Save payment entry in payment entry table
-            savePaymentEntry(savedOrder);
-            
-            logger.info("Order created successfully with ID: {} for Zomato orderId: {}, Custom externalOrderId: {}", 
+            PaymentEntry paymentEntry = savePaymentEntry(savedOrder);
+
+            MongoOrder mongoOrder = mapOrderInfoToMongoOrders(savedOrder , orderAdditionalDetailsDtos ,  paymentEntry);
+            ordersRepository.save(mongoOrder);
+
+            logger.info("Order created successfully with ID: {} for Zomato orderId: {}, Custom externalOrderId: {}",
                        savedOrder.getId(), zomatoOrderId, customExternalOrderId);
 
             response.put("status", "Success");
@@ -134,7 +156,7 @@ public class ZomatoOrderService {
         }
     }
 
-    private void savePaymentEntry(OrderInfo orderInfo) {
+    private PaymentEntry savePaymentEntry(OrderInfo orderInfo) {
         PaymentEntry paymentEntry = new PaymentEntry();
 
         paymentEntry.setOrderId(orderInfo.getId());
@@ -193,8 +215,9 @@ public class ZomatoOrderService {
         paymentEntry.setTransactionId(String.valueOf(transactionId));
 
         // Save to DB
-        paymentEntryRepository.save(paymentEntry);
+        com.buyer.entity.PaymentEntry paymentEntry1 =  paymentEntryRepository.save(paymentEntry);
 
+        return paymentEntry1;
     }
 
     /**
@@ -215,13 +238,13 @@ public class ZomatoOrderService {
 
     private OrderInfo mapZomatoOrderToOrderInfo(JsonNode order, String originalOrderJson) {
         OrderInfo orderInfo = new OrderInfo();
-        
+
         // Basic order information
         String externalOrderId = extractOrderId(order);
         orderInfo.setExternalOrderId(externalOrderId);
         orderInfo.setChannel(Channel.ZOMATO);
         orderInfo.setOrderData("Buyer_v2");
-        
+
         // Set delivery time (default 40 minutes)
         orderInfo.setDeliveryTimeInMinutes("40");
 
@@ -320,15 +343,17 @@ public class ZomatoOrderService {
         }
 
 
-        
+
         // Payment information
-        if (order.has("cash_to_be_collected")) {
-            JsonNode cashToCollect = order.get("cash_to_be_collected");
-            if (cashToCollect != null && !cashToCollect.isNull()) {
-                orderInfo.setAmountToBeCollected(cashToCollect.asInt());
-            }
-        }
-        
+//        if (order.has("cash_to_be_collected")) {
+//            JsonNode cashToCollect = order.get("cash_to_be_collected");
+//            if (cashToCollect != null && !cashToCollect.isNull()) {
+//                orderInfo.setAmountToBeCollected(cashToCollect.asInt());
+//            }
+//        }
+        orderInfo.setAmountToBeCollected(0);
+
+
         // Restaurant/outlet information - parse outlet_id for brand_id and kitchen_id
         if (order.has("outlet_id")) {
             String outletIdStr = order.get("outlet_id").asText();
@@ -542,9 +567,9 @@ public class ZomatoOrderService {
                                               dish.get("composition").has("modifier_groups") &&
                                               dish.get("composition").get("modifier_groups").isArray() &&
                                               dish.get("composition").get("modifier_groups").size() > 0;
-                    
-                    if (hasModifierGroups || dish.has("addons") || dish.has("modifications")) {
-                        processAddonsAndModifications(dish, orderId, savedOrderItem.getId());
+
+                    if (hasModifierGroups) {
+                        processAddonsAndModifications(dish, orderId, savedOrderItem.getId() ,dish.get("quantity").asInt() );
                     }
                 }
                 
@@ -560,7 +585,7 @@ public class ZomatoOrderService {
     /**
      * Process addons and modifications for a dish
      */
-    private void processAddonsAndModifications(JsonNode dish, Long orderId, Long parentOrderItemId) {
+    private void processAddonsAndModifications(JsonNode dish, Long orderId, Long parentOrderItemId , int parentQuantity) {
         try {
             // Handle addons from modifier_groups in composition
             JsonNode composition = dish.get("composition");
@@ -587,7 +612,7 @@ public class ZomatoOrderService {
                                         int price = variant.get("unit_cost").asInt();
                                         addonItem.setSellingPrice(price);
                                         addonItem.setMrp(price);
-                                        addonItem.setTsp(price * addonItem.getQuantity());
+                                        addonItem.setTsp(price * parentQuantity);
                                         logger.debug("Set addon price: {} for variant_id: {}", price, variant.get("variant_id").asText());
                                     } else {
                                         logger.warn("No unit_cost found for addon variant_id: {}", variant.get("variant_id").asText());
@@ -695,7 +720,7 @@ public class ZomatoOrderService {
     /**
      * Save additional order details from Zomato order JSON
      */
-    private void saveOrderAdditionalDetails(JsonNode order, Long orderId, OrderInfo orderInfo) {
+    private List<OrderAdditionalDetailsDto> saveOrderAdditionalDetails(JsonNode order, Long orderId, OrderInfo orderInfo) {
         try {
             List<OrderAdditionalDetailsDto> additionalDetailsDtos = new ArrayList<>();
             
@@ -758,6 +783,12 @@ public class ZomatoOrderService {
             additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.IS_EXPRESS_CHECK_OUT,
                     "true"));
 
+            additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.DELIVERY_TIME_IN_MINUTES,
+                    "0"));
+
+            additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.IS_VARIANT,
+                    "FALSE"));
+
             // Save all additional details
             for (OrderAdditionalDetailsDto dto : additionalDetailsDtos) {
                 OrderAdditionalDetails detail = new OrderAdditionalDetails();
@@ -768,10 +799,12 @@ public class ZomatoOrderService {
             }
             
             logger.info("Saved {} additional details for orderId: {}", additionalDetailsDtos.size(), orderId);
-            
+            return additionalDetailsDtos;
+
         } catch (Exception e) {
             logger.error("Error saving additional order details for orderId: {}", orderId, e);
         }
+        return null;
     }
     
     /**
@@ -818,4 +851,402 @@ public class ZomatoOrderService {
             logger.error("Error saving order in delivery database for order ID: {}", orderInfo.getId(), e);
         }
     }
+
+    public MongoOrder mapOrderInfoToMongoOrders(OrderInfo orderInfo, List<OrderAdditionalDetailsDto> orderAdditionalDetailsDtos, PaymentEntry paymentEntry) throws JsonProcessingException {
+
+        MongoOrder mongoOrder = new MongoOrder();
+
+        logger.info("Mapping OrderInfo to MongoDB Orders for orderId: {}", orderInfo.getId());
+        // Basic order info from MySQL entity
+        mongoOrder.setId(orderInfo.getId());
+        mongoOrder.setOrder_number(orderInfo.getId());
+        mongoOrder.setName(orderInfo.getBillingAddress().getFirstName() + " " + orderInfo.getExternalOrderId());
+        mongoOrder.setNote(orderInfo.getOrderData());
+        mongoOrder.setChannel(orderInfo.getChannel());
+        mongoOrder.setCreated_at(orderInfo.getCreatedAt().toString());
+
+        // Customer details
+        mongoOrder.setEmail(orderInfo.getUser().getEmail());
+        mongoOrder.setUserId(
+                orderInfo.getUser() != null && orderInfo.getUser().getUserId() != null
+                        ? Long.valueOf(orderInfo.getUser().getUserId().longValue())
+                        : null
+        );
+
+        // Amounts from MySQL
+        mongoOrder.setTotal_price(orderInfo.getTotalAmount());
+        mongoOrder.setSub_total(orderInfo.getFinalAmount());
+        mongoOrder.setShipping_charge(orderInfo.getShippingCharges() != null ? orderInfo.getShippingCharges() : BigDecimal.ZERO);
+
+        mongoOrder.setTotal_discounts(orderInfo.getOfferAmount());
+        mongoOrder.setPackaging_fee(orderInfo.getPackagingCharges());
+        mongoOrder.setAmountToBeCollected(orderInfo.getAmountToBeCollected());
+        mongoOrder.setFc_id(orderInfo.getKitchenId());
+
+        if (orderInfo != null) {
+            ShopifyAddress shippingAddress = mapToShopifyAddress(orderInfo);
+            mongoOrder.setShipping_address(shippingAddress);
+        }
+
+        mongoOrder.setBrandId(orderInfo.getBrandId());
+        OrderStatusDto statusDto = new OrderStatusDto();
+        statusDto.setId(orderInfo.getStatus().longValue());
+        statusDto.setName(getStatusById(orderInfo.getStatus()));
+        mongoOrder.setStatus(statusDto);
+
+        String finacial_status = "paid";
+        if (orderInfo.getAmountToBeCollected() > 0) {
+            finacial_status = "pending";
+            mongoOrder.setAmountToBeCollected(orderInfo.getAmountToBeCollected());
+        }
+        mongoOrder.setFinancial_status(finacial_status);
+        if (orderInfo.getTaxDTO() != null) {
+            mongoOrder.setTaxDTO(orderInfo.getTaxDTO());
+        }
+
+        Map<OrderAdditionalData, String> additionalDetails = new HashMap<>();
+        if (orderAdditionalDetailsDtos != null) {
+            for (OrderAdditionalDetailsDto dto : orderAdditionalDetailsDtos) {
+                additionalDetails.put(dto.getOrderKey(), dto.getOrderKeyValue());
+            }
+        }
+        mongoOrder.setOrderAdditionalDetails(additionalDetails);
+
+        mongoOrder.setPromoBalance(orderInfo.getPromoBalance());
+        mongoOrder.setBankOffer(orderInfo.getBankOffer());
+        mongoOrder.setProductDiscount(orderInfo.getProductDiscount());
+
+        mongoOrder.setSearchKey(orderInfo.getId() + "," + orderInfo.getUser().getLastName());
+
+        List<OMSPaymentDetail> paymentDetails = new ArrayList<>();
+        OMSPaymentDetail paymentDetail = new OMSPaymentDetail();
+        paymentDetail.setPaymentMethod(paymentEntry.getPaymentMethod());
+        paymentDetail.setAmount(String.valueOf(BigDecimal.valueOf(Long.parseLong(paymentEntry.getAmount()))));
+        paymentDetail.setPaymentGateway(String.valueOf(paymentEntry.getPaymentGateway()));
+        paymentDetail.setPaymentMethod(PaymentMethod.valueOf(orderInfo.getChannel().name()));
+        paymentDetail.setTransactionId(paymentEntry.getTransactionId());
+        paymentDetail.setPgTransactionId(paymentEntry.getPgTransactionId());
+        paymentDetail.setPaymentMode(paymentEntry.getPaymentMode().name());
+        paymentDetails.add(paymentDetail);
+        mongoOrder.setPaymentDetails(paymentDetails);
+
+        ShopifyDiscountCode discountCode = new ShopifyDiscountCode();
+        discountCode.setCode(orderInfo.getOfferCode());
+        discountCode.setAmount(orderInfo.getOfferAmount());
+        discountCode.setType("");
+
+        ShopifyDiscountCode[] discountCodes = new ShopifyDiscountCode[1];
+        discountCodes[0] = discountCode;
+        mongoOrder.setDiscount_codes(discountCodes);
+
+        String[] data = getLocationByKitchenId(orderInfo.getKitchenId().intValue());
+
+        if (data != null) {
+            mongoOrder.setFc_name(data[0]);
+        }
+
+        // Mapping the product details to mongo
+        logger.info("Mapping orderItem to mongo for order: {}", orderInfo.getId());
+
+        List<ShopifyOrderLineItem> neLineItems = new ArrayList<>();
+        List<OrderItem> orderItems = orderItemRepository.findByOrderId(orderInfo.getId());
+
+        // Map to store products by their OrderItem ID
+        Map<Long, ShopifyOrderLineItem> productMap = new HashMap<>();
+
+        // First pass: Process all PRODUCT items
+        for (OrderItem orderItem : orderItems) {
+            if ("PRODUCT".equalsIgnoreCase(String.valueOf(orderItem.getOrderItemType()))) {
+                ShopifyOrderLineItem lineItem = new ShopifyOrderLineItem();
+
+                ProductDTORedis product = redisService.getActiveProductJson(orderItem.getProductId());
+
+                lineItem.setProductId(orderItem.getProductId());
+                lineItem.setQuantity(orderItem.getQuantity());
+                lineItem.setPrice(orderItem.getMrp());
+
+                if (product != null) {
+                    lineItem.setTitle(product.getTitle());
+                    lineItem.setName(product.getTitle());
+                    lineItem.setSubTitle(product.getSubTitle());
+                    lineItem.setMetaTitle(product.getMetaTitle());
+                    lineItem.setSkuId(product.getSkuId());
+                    lineItem.setSlug(product.getSlug());
+                    lineItem.setMealType(product.getMealType());
+                    lineItem.setKitchenLine(product.getKitchenLine());
+                    lineItem.setCuisine(product.getCuisine());
+                    lineItem.setCategories(product.getCategories());
+                    lineItem.setNutrition(product.getNutrition());
+                    lineItem.setShareUrl(product.getShareUrl());
+                    lineItem.setAdditionalProperties(product.getAdditionalProperties());
+                    lineItem.setSkuDTOList(product.getSkuDTOList());
+                    lineItem.setMedias(mapMedias(product.getMedias()));
+                    lineItem.setInternalName(product.getInternalName());
+                }
+
+                // Initialize addon list for this product
+                lineItem.setAddons(new ArrayList<>());
+
+                // Store using OrderItem ID as key
+                productMap.put(orderItem.getId(), lineItem);
+                neLineItems.add(lineItem);
+            }
+        }
+
+        // Second pass: Process all ADDON items and attach to their parent products
+        for (OrderItem orderItem : orderItems) {
+            if ("ADDON".equalsIgnoreCase(String.valueOf(orderItem.getOrderItemType()))) {
+
+                // Get parent product using related_product_id
+                ShopifyOrderLineItem parentLineItem = productMap.get(orderItem.getParentOrderItemId());
+
+                if (parentLineItem != null) {
+                    // Create addon as ShopifyOrderLineItem
+                    ShopifyOrderLineItem addonLineItem = new ShopifyOrderLineItem();
+
+                    addonLineItem.setProductId(orderItem.getProductId());
+                    addonLineItem.setQuantity(orderItem.getQuantity());
+                    addonLineItem.setPrice(orderItem.getMrp());
+
+                    // Fetch addon details from Redis
+                    ProductDTORedis addonProduct = redisService.getActiveProductJson(orderItem.getProductId());
+                    if (addonProduct != null) {
+                        addonLineItem.setTitle(addonProduct.getTitle());
+                        addonLineItem.setName(addonProduct.getTitle());
+                        addonLineItem.setSubTitle(addonProduct.getSubTitle());
+                        addonLineItem.setMetaTitle(addonProduct.getMetaTitle());
+                        addonLineItem.setSkuId(addonProduct.getSkuId());
+                        addonLineItem.setSlug(addonProduct.getSlug());
+                        addonLineItem.setMealType(addonProduct.getMealType());
+                        addonLineItem.setKitchenLine(addonProduct.getKitchenLine());
+                        addonLineItem.setCuisine(addonProduct.getCuisine());
+                        addonLineItem.setCategories(addonProduct.getCategories());
+                        addonLineItem.setNutrition(addonProduct.getNutrition());
+                        addonLineItem.setShareUrl(addonProduct.getShareUrl());
+                        addonLineItem.setAdditionalProperties(addonProduct.getAdditionalProperties());
+                        addonLineItem.setSkuDTOList(addonProduct.getSkuDTOList());
+                        addonLineItem.setMedias(mapMedias(addonProduct.getMedias()));
+                        addonLineItem.setInternalName(addonProduct.getInternalName());
+                    }
+
+                    // Add this addon to parent product's addon list
+                    parentLineItem.getAddons().add(addonLineItem);
+                }
+            }
+        }
+
+        mongoOrder.setLine_items(neLineItems);
+
+        logger.info("Successfully mapped OrderInfo to MongoDB Orders for orderId: {}", orderInfo.getId());
+
+        return mongoOrder;
+
+    }
+
+    private ShopifyAddress mapToShopifyAddress(OrderInfo orderInfo) {
+
+        ShopifyAddress address = new ShopifyAddress();
+        if (orderInfo.getShippingAddress() != null) {
+            address.setAddress1(orderInfo.getShippingAddress().getAddressLine1());
+            address.setCity(orderInfo.getShippingAddress().getCity());
+            address.setProvince(orderInfo.getShippingAddress().getState());
+            address.setZip(orderInfo.getShippingAddress().getPincode());
+
+            address.setFirst_name(orderInfo.getShippingAddress().getFirstName());
+            address.setLast_name(orderInfo.getShippingAddress().getLastName());
+            address.setPhone(orderInfo.getShippingAddress().getMobileNumber());
+
+            address.setName(address.getFirst_name() + " " + address.getLast_name());
+            address.setLatitude(orderInfo.getBillingAddress().getLat());
+            address.setLongitude(orderInfo.getBillingAddress().getLon());
+
+            address.setLatForSubzone(orderInfo.getBillingAddress().getLat());
+            address.setLonForSubzone(orderInfo.getBillingAddress().getLon());
+        }
+        return address;
+    }
+
+
+    public static String[] getLocationByKitchenId(int kitchenId) {
+
+        Map<Integer, String[]> map = new HashMap<>();
+
+        map.put(1, new String[]{"Bellandur", "1"});
+        map.put(2, new String[]{"Indira_Nagar", "1"});
+        map.put(3, new String[]{"Whitefield", "1"});
+        map.put(4, new String[]{"JP_Nagar", "1"});
+        map.put(5, new String[]{"Marthahalli", "1"});
+        map.put(6, new String[]{"Richmond_Town", "1"});
+        map.put(7, new String[]{"Jakkasandra", "1"});
+        map.put(9, new String[]{"Hennur", "1"});
+        map.put(10, new String[]{"Powai_Mumbai", "2"});
+        map.put(11, new String[]{"Sikanderpur_Gurgaon", "4"});
+        map.put(12, new String[]{"Frazer_Town", "1"});
+        map.put(13, new String[]{"BTM Layout", "1"});
+        map.put(14, new String[]{"Rajajinagar", "1"});
+        map.put(15, new String[]{"Banashankari", "1"});
+        map.put(16, new String[]{"Electronic City", "1"});
+        map.put(17, new String[]{"BKC_Mumbai", "2"});
+        map.put(18, new String[]{"Sohna_Road_Gurgaon", "4"});
+        map.put(19, new String[]{"Domlur", "1"});
+        map.put(20, new String[]{"Worli_Mumbai", "2"});
+        map.put(21, new String[]{"CV_Raman_Nagar", "1"});
+        map.put(22, new String[]{"HSR", "1"});
+        map.put(23, new String[]{"RT_Nagar", "1"});
+        map.put(25, new String[]{"Central Kitchen", "1"});
+        map.put(26, new String[]{"Goregaon_Mumbai", "2"});
+        map.put(27, new String[]{"Saket_Delhi", "3"});
+        map.put(28, new String[]{"Fort_Mumbai", "2"});
+        map.put(29, new String[]{"Kalkaji_Delhi", "3"});
+        map.put(30, new String[]{"POS-Fortis", "1"});
+        map.put(31, new String[]{"POS-Manipal", "1"});
+        map.put(32, new String[]{"Jakkuru", "1"});
+        map.put(33, new String[]{"POS-boeing", "1"});
+        map.put(34, new String[]{"Bandra_Mumbai", "2"});
+        map.put(35, new String[]{"Malad_Mumbai", "2"});
+        map.put(36, new String[]{"Oshiwara_Mumbai", "2"});
+        map.put(37, new String[]{"Chembur_Mumbai", "2"});
+        map.put(38, new String[]{"Udyog_Vihar", "4"});
+        map.put(39, new String[]{"Sarjapur_Road", "1"});
+        map.put(40, new String[]{"Kanakpura", "1"});
+
+        map.put(47, new String[]{"kadubeesanahalli", "1"});
+        map.put(48, new String[]{"Mahadevapura", "1"});
+
+        map.put(54, new String[]{"Chakala_Mumbai", "2"});
+        map.put(55, new String[]{"Golf Course Extension - Gurgaon", "4"});
+
+        map.put(58, new String[]{"RichmondTown - BottleGenie", "1"});
+        map.put(59, new String[]{"RR_Nagar", "1"});
+        map.put(60, new String[]{"Central_Mumbai", "2"});
+        map.put(61, new String[]{"Noida_Sector_7", "5"});
+        map.put(62, new String[]{"Varthur", "1"});
+
+        map.put(69, new String[]{"Noida_Sector_63", "5"});
+
+        map.put(72, new String[]{"Oyo Kitchen Sector 39", "4"});
+        map.put(73, new String[]{"Panchpakhadi_Thane", "2"});
+        map.put(74, new String[]{"Kharadi_Pune", "2"});
+        map.put(75, new String[]{"Hinjawadi_Pune", "2"});
+        map.put(76, new String[]{"Magarpatta - Pune", "2"});
+        map.put(77, new String[]{"Paschim Vihar-DelhiNCR", "5"});
+        map.put(78, new String[]{"Mayur Vihar-1-Delhi NCR", "5"});
+        map.put(79, new String[]{"Karol Bagh - Delhi", "3"});
+        map.put(80, new String[]{"FoodPanda-NGV", "1"});
+        map.put(81, new String[]{"Mulund - Swiggy Access", "2"});
+        map.put(82, new String[]{"Edesia Dessert Cart", "1"});
+        map.put(83, new String[]{"Sakhivihar - Mumbai", "2"});
+        map.put(84, new String[]{"Rajouri Garden - Delhi ( Swiggy Access)", "3"});
+        map.put(85, new String[]{"Hauzkhas Swiggy Access", "3"});
+
+        map.put(97, new String[]{"BELRoad@Kitchen", "1"});
+        map.put(98, new String[]{"Yelahanka@Kitchen", "1"});
+        map.put(99, new String[]{"KudluGate", "1"});
+        map.put(100, new String[]{"SahakarNagar", "1"});
+        map.put(101, new String[]{"Kasavanahalli", "1"});
+        map.put(102, new String[]{"Boeing Corporate", "1"});
+        map.put(103, new String[]{"Juhu_Mumbai", "2"});
+        map.put(104, new String[]{"Borivali_Mumbai", "2"});
+        map.put(105, new String[]{"Manpada_Mumbai", "2"});
+        map.put(106, new String[]{"Target-Bangalore", "1"});
+        map.put(107, new String[]{"Parel_Mumbai", "2"});
+        map.put(108, new String[]{"Kalina_Mumbai", "2"});
+        map.put(109, new String[]{"Waghbil_Thane", "2"});
+        map.put(110, new String[]{"Wadala_Mumbai", "2"});
+        map.put(111, new String[]{"Colaba_Mumbai", "2"});
+        map.put(112, new String[]{"Mulund_Mumbai", "2"});
+        map.put(113, new String[]{"Bhandup_Mumbai", "2"});
+        map.put(114, new String[]{"Vignan_nagar", "1"});
+        map.put(115, new String[]{"Rammurthy_Nagar", "1"});
+        map.put(116, new String[]{"Indirapuram_Noida", "5"});
+        map.put(117, new String[]{"Murgeshpalya", "1"});
+        map.put(118, new String[]{"Noida_Sector_16", "5"});
+        map.put(119, new String[]{"BELRoad", "1"});
+        map.put(120, new String[]{"Sector-31-Gurgaon", "4"});
+        map.put(121, new String[]{"Koramangala_NGV", "1"});
+        map.put(122, new String[]{"Kanakpura_Gubbalala", "1"});
+        map.put(123, new String[]{"BUDIGERE", "1"});
+        map.put(124, new String[]{"Nagarbhavi", "1"});
+        map.put(125, new String[]{"Hesaraghatta", "1"});
+        map.put(126, new String[]{"Sec_53_Gurgaon", "4"});
+        map.put(127, new String[]{"Dwarka_sec_7", "5"});
+        map.put(128, new String[]{"Vasant_Kunj_Delhi", "3"});
+        map.put(129, new String[]{"Noida_Sector_49", "5"});
+        map.put(130, new String[]{"Rajouri_Garden_Delhi", "3"});
+        map.put(131, new String[]{"Banaswadi", "1"});
+        map.put(132, new String[]{"Sec_69_Gurgaon", "4"});
+        map.put(133, new String[]{"Shakarpur_Delhi", "3"});
+        map.put(134, new String[]{"Yelahanka", "1"});
+        map.put(135, new String[]{"Kandivali_Mumbai", "2"});
+        map.put(136, new String[]{"VASHI_Mumbai", "2"});
+        map.put(137, new String[]{"Noida_Sector_73", "5"});
+        map.put(138, new String[]{"Sec_85_Gurgaon", "4"});
+        map.put(139, new String[]{"Vijayanagar", "1"});
+        map.put(140, new String[]{"Bommanahalli", "1"});
+        map.put(141, new String[]{"Mahakali_Caves", "2"});
+        map.put(142, new String[]{"Dombivali", "2"});
+        map.put(153, new String[]{"Dwarka Sec-7", "3"});
+        map.put(154, new String[]{"Sector-7, Dwarka", "3"});
+        map.put(155, new String[]{"Malad_Mumbai", "2"});
+        map.put(156, new String[]{"Jogeshwari_Mumbai", "2"});
+
+        return map.get(kitchenId);
+    }
+
+    public static String getStatusById(int statusId) {
+
+        Map<Integer, String> statusMap = new HashMap<>();
+
+        statusMap.put(1, "new");
+        statusMap.put(2, "payment_failed");
+        statusMap.put(3, "cancelled");
+        statusMap.put(4, "confirmed");
+        statusMap.put(5, "shipped");
+        statusMap.put(6, "delivered");
+        statusMap.put(7, "payment_waiting");
+        statusMap.put(8, "payment_response_invalid");
+        statusMap.put(9, "invalid");
+        statusMap.put(10, "refunded");
+
+        return statusMap.get(statusId);
+    }
+
+    private List<Map<DimensionType, MediaDTO>> mapMedias(
+            List<MediaWrapperDTO> productMedias) {
+
+        if (productMedias == null || productMedias.isEmpty()) {
+            return null;
+        }
+
+        List<Map<DimensionType, MediaDTO>> mediaList = new ArrayList<>();
+
+        for (MediaWrapperDTO wrapper : productMedias) {
+
+            Map<DimensionType, MediaDTO> mediaMap =
+                    new EnumMap<>(DimensionType.class);
+
+            if (wrapper.getMobile() != null) {
+                mediaMap.put(DimensionType.MOBILE, wrapper.getMobile());
+            }
+            if (wrapper.getSmall() != null) {
+                mediaMap.put(DimensionType.SMALL, wrapper.getSmall());
+            }
+            if (wrapper.getMedium() != null) {
+                mediaMap.put(DimensionType.MEDIUM, wrapper.getMedium());
+            }
+            if (wrapper.getLarge() != null) {
+                mediaMap.put(DimensionType.LARGE, wrapper.getLarge());
+            }
+            if (wrapper.getOriginal() != null) {
+                mediaMap.put(DimensionType.ORIGINAL, wrapper.getOriginal());
+            }
+
+            if (!mediaMap.isEmpty()) {
+                mediaList.add(mediaMap);
+            }
+        }
+
+        return mediaList;
+    }
+
 }

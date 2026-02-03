@@ -6,7 +6,9 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.jdbc.DataSourceBuilder;
 import org.springframework.boot.orm.jpa.EntityManagerFactoryBuilder;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.ComponentScan;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.FilterType;
 import org.springframework.data.jpa.repository.config.EnableJpaRepositories;
 import org.springframework.orm.jpa.JpaTransactionManager;
 import org.springframework.orm.jpa.LocalContainerEntityManagerFactoryBean;
@@ -19,6 +21,10 @@ import java.util.Map;
 @Configuration
 @EnableJpaRepositories(
         basePackages = "com.buyer.deliveryDB.repository",
+        excludeFilters = @ComponentScan.Filter(
+                type = FilterType.REGEX,
+                pattern = "com\\.buyer\\.repository\\.MongoDB\\..*"
+        ),
         entityManagerFactoryRef = "fmDeliveryEntityManagerFactory",
         transactionManagerRef = "fmDeliveryTransactionManager"
 )

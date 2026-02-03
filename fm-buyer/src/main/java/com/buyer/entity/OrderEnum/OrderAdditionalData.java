@@ -25,5 +25,8 @@ public enum OrderAdditionalData {
     MAGIC_PIN_ORDER_ID,
     MAGIC_PIN_OTP,
     BITSILA_ORDER_ID,
-    FLASH_ORDER
+    FLASH_ORDER,
+    DELIVERY_TIME_IN_MINUTES,
+    IS_VARIANT,
+    IS_VEG_ORDER
 }
