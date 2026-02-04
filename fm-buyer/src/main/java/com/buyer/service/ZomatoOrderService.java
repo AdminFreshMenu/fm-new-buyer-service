@@ -43,6 +43,7 @@ import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.scheduling.annotation.Async;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -852,8 +853,9 @@ public class ZomatoOrderService {
         }
     }
 
-    public MongoOrder mapOrderInfoToMongoOrders(OrderInfo orderInfo, List<OrderAdditionalDetailsDto> orderAdditionalDetailsDtos, PaymentEntry paymentEntry) throws JsonProcessingException {
-
+    //    @Async("mongoExecutor")
+    public MongoOrder mapOrderInfoToMongoOrders(OrderInfo orderInfo, List<OrderAdditionalDetailsDto> orderAdditionalDetailsDtos, PaymentEntry paymentEntry)  {
+    try{
         MongoOrder mongoOrder = new MongoOrder();
 
         logger.info("Mapping OrderInfo to MongoDB Orders for orderId: {}", orderInfo.getId());
@@ -880,7 +882,7 @@ public class ZomatoOrderService {
 
         mongoOrder.setTotal_discounts(orderInfo.getOfferAmount());
         mongoOrder.setPackaging_fee(orderInfo.getPackagingCharges());
-        mongoOrder.setAmountToBeCollected(orderInfo.getAmountToBeCollected());
+        mongoOrder.setAmountToBeCollected(orderInfo.getAmountToBeCollected() != null ? orderInfo.getAmountToBeCollected() : 0);
         mongoOrder.setFc_id(orderInfo.getKitchenId());
 
         if (orderInfo != null) {
@@ -897,7 +899,7 @@ public class ZomatoOrderService {
         String finacial_status = "paid";
         if (orderInfo.getAmountToBeCollected() > 0) {
             finacial_status = "pending";
-            mongoOrder.setAmountToBeCollected(orderInfo.getAmountToBeCollected());
+            mongoOrder.setAmountToBeCollected(orderInfo.getAmountToBeCollected()!= null ? orderInfo.getAmountToBeCollected():0);
         }
         mongoOrder.setFinancial_status(finacial_status);
         if (orderInfo.getTaxDTO() != null) {
@@ -1040,7 +1042,11 @@ public class ZomatoOrderService {
         logger.info("Successfully mapped OrderInfo to MongoDB Orders for orderId: {}", orderInfo.getId());
 
         return mongoOrder;
-
+    } catch (Exception e) {
+        e.printStackTrace();
+        logger.error("Error mapping OrderInfo to MongoDB Orders for orderId: {}", orderInfo.getId(), e);
+    }
+        return null;
     }
 
     private ShopifyAddress mapToShopifyAddress(OrderInfo orderInfo) {

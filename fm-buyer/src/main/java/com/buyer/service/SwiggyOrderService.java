@@ -4,6 +4,7 @@ import com.buyer.dto.swiggy.SwiggyAddon;
 import com.buyer.dto.swiggy.SwiggyOrderRequest;
 import com.buyer.dto.swiggy.SwiggyItems;
 import com.buyer.dto.swiggy.Variant;
+import com.buyer.entity.MongoDB.MongoOrder;
 import com.buyer.entity.OrderEnum.Channel;
 import com.buyer.entity.OrderAddress;
 import com.buyer.entity.OrderEnum.OrderAdditionalData;
@@ -20,6 +21,7 @@ import com.buyer.entity.PaymentEnum.PaymentMethod;
 import com.buyer.entity.PaymentEnum.PaymentMode;
 import com.buyer.entity.PaymentEnum.PaymentStatus;
 import com.buyer.dto.PaymentUserInfo;
+import com.buyer.repository.MongoDB.OrdersRepository;
 import com.buyer.repository.OrderAddressRepository;
 import com.buyer.repository.OrderAdditionalDetailsRepository;
 import com.buyer.repository.OrderInfoRepository;
@@ -73,6 +75,12 @@ public class SwiggyOrderService {
     @Autowired
     private PaymentEntryRepository paymentEntryRepository;
 
+    @Autowired
+    private ZomatoOrderService zomatoOrderService;
+
+    @Autowired
+    private OrdersRepository ordersRepository; // MongoDB repository
+
     @Transactional
     public ResponseEntity<Map<String, Object>> createOrder(SwiggyOrderRequest swiggyOrderRequest, String merchantId) {
         Map<String, Object> response = new HashMap<>();
@@ -109,15 +117,22 @@ public class SwiggyOrderService {
             saveOrderItems(swiggyOrderRequest.getItems(), savedOrder.getId());
             
             // Save additional order details
-            saveOrderAdditionalDetails(swiggyOrderRequest, savedOrder.getId(), savedOrder);
+             List<OrderAdditionalDetailsDto> orderAdditionalDetailsDtos = saveOrderAdditionalDetails(swiggyOrderRequest, savedOrder.getId(), savedOrder);
             
             // Save order in delivery database
             saveOrderInDeliveryDatabase(savedOrder);
 
             // Save payment entry in payment entry table
-            savePaymentEntry(savedOrder);
-            
-            logger.info("Order created successfully with ID: {} for Swiggy orderId: {}, Custom externalOrderId: {}", 
+            PaymentEntry paymentEntry = savePaymentEntry(savedOrder);
+
+            // save data to mongoDb
+
+
+            MongoOrder mongoOrder = zomatoOrderService.mapOrderInfoToMongoOrders(orderInfo,orderAdditionalDetailsDtos,paymentEntry);
+            ordersRepository.save(mongoOrder);
+
+
+                logger.info("Order created successfully with ID: {} for Swiggy orderId: {}, Custom externalOrderId: {}",
                        savedOrder.getId(), swiggyOrderId, customExternalOrderId);
 
             response.put("status", "Success");
@@ -218,7 +233,7 @@ public class SwiggyOrderService {
         }
         orderInfo.setTotalAmount(totalAmount);
         orderInfo.setFinalAmount(totalAmount - request.getRestaurantDiscount() + request.getOrderPackingCharges());
-
+        orderInfo.setAmountToBeCollected(0);
         
         logger.info("Mapped Swiggy order to OrderInfo: externalOrderId={}, grossAmount={}, finalAmount={}, outletId={}", 
                     externalOrderId, orderInfo.getTotalAmount(), orderInfo.getFinalAmount(), orderInfo.getKitchenId());
@@ -414,7 +429,7 @@ public class SwiggyOrderService {
     /**
      * Save payment entry
      */
-    private void savePaymentEntry(OrderInfo orderInfo) {
+    private PaymentEntry savePaymentEntry(OrderInfo orderInfo) {
         PaymentEntry paymentEntry = new PaymentEntry();
 
         paymentEntry.setOrderId(orderInfo.getId());
@@ -458,14 +473,16 @@ public class SwiggyOrderService {
         paymentEntry.setTransactionId(String.valueOf(transactionId));
 
         // Save to DB
-        paymentEntryRepository.save(paymentEntry);
+        com.buyer.entity.PaymentEntry paymentEntry1 =  paymentEntryRepository.save(paymentEntry);
         logger.info("Saved payment entry for orderId: {}", orderInfo.getId());
+
+        return paymentEntry1;
     }
 
     /**
      * Save additional order details from Swiggy request
      */
-    private void saveOrderAdditionalDetails(SwiggyOrderRequest request, Long orderId, OrderInfo orderInfo) {
+    private  List<OrderAdditionalDetailsDto> saveOrderAdditionalDetails(SwiggyOrderRequest request, Long orderId, OrderInfo orderInfo) {
         try {
             List<OrderAdditionalDetailsDto> additionalDetailsDtos = new ArrayList<>();
             
@@ -550,10 +567,12 @@ public class SwiggyOrderService {
             }
             
             logger.info("Saved {} additional details for orderId: {}", additionalDetailsDtos.size(), orderId);
-            
+            return additionalDetailsDtos;
+
         } catch (Exception e) {
             logger.error("Error saving additional order details for orderId: {}", orderId, e);
         }
+         return null;
     }
 
 
