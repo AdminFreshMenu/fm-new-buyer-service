@@ -9,6 +9,7 @@ import com.buyer.dto.rapido.ItemAddon;
 import com.buyer.dto.rapido.LocationDTO;
 import com.buyer.dto.rapido.OrderItem;
 import com.buyer.dto.rapido.RapidoOrderCreate;
+import com.buyer.entity.MongoDB.MongoOrder;
 import com.buyer.entity.OrderAdditionalDetails;
 import com.buyer.entity.OrderAddress;
 import com.buyer.entity.OrderEnum.Channel;
@@ -22,6 +23,7 @@ import com.buyer.entity.PaymentEnum.PaymentGateway;
 import com.buyer.entity.PaymentEnum.PaymentMethod;
 import com.buyer.entity.PaymentEnum.PaymentMode;
 import com.buyer.entity.PaymentEnum.PaymentStatus;
+import com.buyer.repository.MongoDB.OrdersRepository;
 import com.buyer.repository.OrderAdditionalDetailsRepository;
 import com.buyer.repository.OrderAddressRepository;
 import com.buyer.repository.OrderInfoRepository;
@@ -75,6 +77,12 @@ public class RapidoOrderService {
     @Autowired
     private PaymentEntryRepository paymentEntryRepository;
 
+    @Autowired
+    private ZomatoOrderService zomatoOrderService;
+
+    @Autowired
+    private OrdersRepository ordersRepository; // MongoDB repository
+
     @Transactional
     public ResponseEntity<Map<String, Object>> createOrder(RapidoOrderCreate orderRequest, Integer brandId) {
         Map<String, Object> response = new HashMap<>();
@@ -97,11 +105,14 @@ public class RapidoOrderService {
             savedOrder.setExternalOrderId(externalOrderId);
             savedOrder = orderInfoRepository.save(savedOrder);
 
-            saveOrderAdditionalDetails(orderRequest, savedOrder.getId(), savedOrder);
+            List<OrderAdditionalDetailsDto>  orderAdditionalDetailsDtos = saveOrderAdditionalDetails(orderRequest, savedOrder.getId(), savedOrder);
 
             saveRapidoOrderItems(orderRequest.getItems(), savedOrder.getId());
-            savePaymentEntry(savedOrder);
+            PaymentEntry paymentEntry = savePaymentEntry(savedOrder);
             saveOrderInDeliveryDatabase(savedOrder);
+
+            MongoOrder mongoOrder = zomatoOrderService.mapOrderInfoToMongoOrders(orderInfo,orderAdditionalDetailsDtos,paymentEntry);
+            ordersRepository.save(mongoOrder);
 
             logger.info("Rapido order created: internalId={}, rapidoOrderId={}, externalOrderId={}",
                     savedOrder.getId(), rapidoOrderId, externalOrderId);
@@ -127,6 +138,7 @@ public class RapidoOrderService {
         orderInfo.setStatus(1);
         orderInfo.setOrderData("Buyer_v2");
         orderInfo.setKitchenId(Long.parseLong(orderRequest.getOrderInfo().getRestId()));
+        orderInfo.setAmountToBeCollected(0);
 
         if (orderRequest.getCustomer() != null) {
             Customer customer = orderRequest.getCustomer();
@@ -171,7 +183,7 @@ public class RapidoOrderService {
             orderItem.setCashbackAmount(BigDecimal.ZERO);
             orderItem.setPackagingPrice(BigDecimal.ZERO);
             orderItem.setcDisc(BigDecimal.ZERO);
-            orderItemRepository.save(orderItem);
+            com.buyer.entity.OrderItem orderItem1 = orderItemRepository.save(orderItem);
 
             List<ItemAddon> addOns = item.getAddOns();
             if (addOns != null && !addOns.isEmpty()) {
@@ -187,13 +199,14 @@ public class RapidoOrderService {
                     orderItemAddon.setCashbackAmount(BigDecimal.ZERO);
                     orderItemAddon.setPackagingPrice(BigDecimal.ZERO);
                     orderItemAddon.setcDisc(BigDecimal.ZERO);
+                    orderItemAddon.setParentOrderItemId(orderItem1.getId());
                     orderItemRepository.save(orderItemAddon);
                 }
             }
         }
     }
 
-    private void savePaymentEntry(OrderInfo orderInfo) {
+    private PaymentEntry savePaymentEntry(OrderInfo orderInfo) {
         PaymentEntry paymentEntry = new PaymentEntry();
         paymentEntry.setOrderId(orderInfo.getId());
         paymentEntry.setAmount(String.valueOf(orderInfo.getFinalAmount().intValue()));
@@ -218,7 +231,10 @@ public class RapidoOrderService {
         long transactionId = System.currentTimeMillis() * 1000 + ThreadLocalRandom.current().nextInt(0, 1000);
         paymentEntry.setTransactionId(String.valueOf(transactionId));
 
-        paymentEntryRepository.save(paymentEntry);
+        com.buyer.entity.PaymentEntry paymentEntry1 = paymentEntryRepository.save(paymentEntry);
+
+        return paymentEntry1;
+
     }
 
     private void saveOrderInDeliveryDatabase(OrderInfo orderInfo) {
@@ -255,9 +271,10 @@ public class RapidoOrderService {
     /**
      * Save additional order details from Zomato order JSON
      */
-    private void saveOrderAdditionalDetails(RapidoOrderCreate orderRequest, Long orderId, OrderInfo orderInfo) {
+    private List<OrderAdditionalDetailsDto> saveOrderAdditionalDetails(RapidoOrderCreate orderRequest, Long orderId, OrderInfo orderInfo) {
+        List<OrderAdditionalDetailsDto> additionalDetailsDtos = new ArrayList<>();
+
         try {
-            List<OrderAdditionalDetailsDto> additionalDetailsDtos = new ArrayList<>();
 
             // rapido Order ID
             additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.RAPIDO_FOOD_ORDER_ID,
@@ -297,10 +314,13 @@ public class RapidoOrderService {
             }
 
             logger.info("Saved {} additional details for orderId: {}", additionalDetailsDtos.size(), orderId);
+            return additionalDetailsDtos;
 
         } catch (Exception e) {
             logger.error("Error saving additional order details for orderId: {}", orderId, e);
         }
+
+        return null;
     }
 
 

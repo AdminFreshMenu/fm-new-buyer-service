@@ -10,6 +10,7 @@ import com.buyer.dto.magicpin.CreateOrderResponse;
 import com.buyer.dto.magicpin.Item;
 import com.buyer.dto.magicpin.MagicpinOrderRequest;
 import com.buyer.dto.magicpin.Status;
+import com.buyer.entity.MongoDB.MongoOrder;
 import com.buyer.entity.OrderAdditionalDetails;
 import com.buyer.entity.OrderAddress;
 import com.buyer.entity.OrderEnum.Channel;
@@ -23,6 +24,7 @@ import com.buyer.entity.PaymentEnum.PaymentGateway;
 import com.buyer.entity.PaymentEnum.PaymentMethod;
 import com.buyer.entity.PaymentEnum.PaymentMode;
 import com.buyer.entity.PaymentEnum.PaymentStatus;
+import com.buyer.repository.MongoDB.OrdersRepository;
 import com.buyer.repository.OrderAdditionalDetailsRepository;
 import com.buyer.repository.OrderAddressRepository;
 import com.buyer.repository.OrderInfoRepository;
@@ -75,6 +77,12 @@ public class MagicpinService {
 
     @Autowired
     private PaymentEntryRepository paymentEntryRepository;
+
+    @Autowired
+    private ZomatoOrderService zomatoOrderService;
+
+    @Autowired
+    private OrdersRepository ordersRepository;
 
     @Transactional
     public ResponseEntity<CreateOrderResponse> createOrder(MagicpinOrderRequest orderRequest, Integer brandId) {
@@ -129,10 +137,13 @@ public class MagicpinService {
             savedOrder.setExternalOrderId(externalOrderId);
             savedOrder = orderInfoRepository.save(savedOrder);
 
-            saveOrderAdditionalDetails(orderRequest, savedOrder.getId(), savedOrder);
+            List<OrderAdditionalDetailsDto> orderAdditionalDetailsDtos = saveOrderAdditionalDetails(orderRequest, savedOrder.getId(), savedOrder);
             saveMagicpinOrderItems(orderRequest.getItems(), savedOrder.getId());
-            savePaymentEntry(savedOrder);
+            PaymentEntry paymentEntry = savePaymentEntry(savedOrder);
             saveOrderInDeliveryDatabase(savedOrder);
+
+            MongoOrder mongoOrder = zomatoOrderService.mapOrderInfoToMongoOrders(orderInfo,orderAdditionalDetailsDtos,paymentEntry);
+            ordersRepository.save(mongoOrder);
 
             logger.info("MagicPin order created: internalId={}, magicpinOrderId={}, externalOrderId={}",
                     savedOrder.getId(), magicpinOrderId, externalOrderId);
@@ -155,6 +166,7 @@ public class MagicpinService {
         orderInfo.setExternalOrderId(String.valueOf(orderRequest.getOrderId()));
         orderInfo.setBrandId(brandId);
         orderInfo.setChannel(Channel.MAGIC_PIN);
+        orderInfo.setAmountToBeCollected(0);
 
         int totalAmount = 0;
         int packagingCharge = 0;
@@ -254,7 +266,7 @@ public class MagicpinService {
         }
     }
 
-    private void savePaymentEntry(OrderInfo orderInfo) {
+    private PaymentEntry savePaymentEntry(OrderInfo orderInfo) {
         PaymentEntry paymentEntry = new PaymentEntry();
         paymentEntry.setOrderId(orderInfo.getId());
         paymentEntry.setAmount(String.valueOf(orderInfo.getFinalAmount().intValue()));
@@ -279,7 +291,9 @@ public class MagicpinService {
         long transactionId = System.currentTimeMillis() * 1000 + ThreadLocalRandom.current().nextInt(0, 1000);
         paymentEntry.setTransactionId(String.valueOf(transactionId));
 
-        paymentEntryRepository.save(paymentEntry);
+        com.buyer.entity.PaymentEntry paymentEntry1 = paymentEntryRepository.save(paymentEntry);
+
+        return paymentEntry1;
     }
 
     private void saveOrderInDeliveryDatabase(OrderInfo orderInfo) {
@@ -305,9 +319,10 @@ public class MagicpinService {
         orderRepository.save(deliveryOrder);
     }
 
-    private void saveOrderAdditionalDetails(MagicpinOrderRequest orderRequest, Long orderId, OrderInfo orderInfo) {
+    private List<OrderAdditionalDetailsDto> saveOrderAdditionalDetails(MagicpinOrderRequest orderRequest, Long orderId, OrderInfo orderInfo) {
+        List<OrderAdditionalDetailsDto> additionalDetailsDtos = new ArrayList<>();
+
         try {
-            List<OrderAdditionalDetailsDto> additionalDetailsDtos = new ArrayList<>();
 
             // MagicPin Order ID
             additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.MAGIC_PIN_ORDER_ID,
@@ -349,8 +364,10 @@ public class MagicpinService {
 
             logger.info("Saved {} additional details for orderId: {}", additionalDetailsDtos.size(), orderId);
 
+            return additionalDetailsDtos;
         } catch (Exception e) {
             logger.error("Error saving additional order details for orderId: {}", orderId, e);
         }
+        return null;
     }
 }

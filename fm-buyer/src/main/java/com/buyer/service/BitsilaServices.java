@@ -8,6 +8,7 @@ import com.buyer.dto.bitsila.ChargesBreakupDTO;
 import com.buyer.dto.bitsila.OrderItemDTO;
 import com.buyer.dto.bitsila.OrderRequest;
 import com.buyer.dto.bitsila.Response;
+import com.buyer.entity.MongoDB.MongoOrder;
 import com.buyer.entity.OrderAdditionalDetails;
 import com.buyer.entity.OrderAddress;
 import com.buyer.entity.OrderInfo;
@@ -21,6 +22,7 @@ import com.buyer.entity.PaymentEnum.PaymentGateway;
 import com.buyer.entity.PaymentEnum.PaymentMethod;
 import com.buyer.entity.PaymentEnum.PaymentMode;
 import com.buyer.entity.PaymentEnum.PaymentStatus;
+import com.buyer.repository.MongoDB.OrdersRepository;
 import com.buyer.repository.OrderAdditionalDetailsRepository;
 import com.buyer.repository.OrderAddressRepository;
 import com.buyer.repository.OrderInfoRepository;
@@ -75,6 +77,12 @@ public class BitsilaServices {
     @Autowired
     private PaymentEntryRepository paymentEntryRepository;
 
+    @Autowired
+    private ZomatoOrderService zomatoOrderService;
+
+    @Autowired
+    private OrdersRepository ordersRepository;
+
     @Transactional
     public ResponseEntity<Response> createOrder(String authKey, OrderRequest orderRequest) {
         try {
@@ -124,10 +132,13 @@ public class BitsilaServices {
             savedOrder.setExternalOrderId(externalOrderId);
             savedOrder = orderInfoRepository.save(savedOrder);
 
-            saveOrderAdditionalDetails(orderRequest, savedOrder.getId(), savedOrder);
+            List<OrderAdditionalDetailsDto> orderAdditionalDetailsDtos = saveOrderAdditionalDetails(orderRequest, savedOrder.getId(), savedOrder);
             saveBitsilaOrderItems(orderRequest.getOrderItems(), savedOrder.getId(), savedOrder.getBrandId());
-            savePaymentEntry(savedOrder);
+            PaymentEntry paymentEntry = savePaymentEntry(savedOrder);
             saveOrderInDeliveryDatabase(savedOrder);
+
+            MongoOrder mongoOrder = zomatoOrderService.mapOrderInfoToMongoOrders(orderInfo,orderAdditionalDetailsDtos,paymentEntry);
+            ordersRepository.save(mongoOrder);
 
             logger.info("Bitsila order created: internalId={}, bitsilaOrderId={}, externalOrderId={}",
                     savedOrder.getId(), bitsilaOrderId, externalOrderId);
@@ -149,6 +160,7 @@ public class BitsilaServices {
         orderInfo.setChannel(Channel.BITSILA_ONDC);
 
         orderInfo.setTotalAmount(orderRequest.getOrder().getSubTotal().floatValue());
+        orderInfo.setAmountToBeCollected(0);
 
         int offeramount = 0;
         double totalPackagingCharge = 0;
@@ -212,7 +224,7 @@ public class BitsilaServices {
                 orderItem.setProductId(Long.valueOf(item.getRefId()));
             } else {
                 String[] refId = (item.getRefId()).split("_");
-                orderItem.setProductId(Long.parseLong(refId[1]));
+                orderItem.setProductId(Long.parseLong(refId[0]));
             }
 
 
@@ -228,7 +240,7 @@ public class BitsilaServices {
         }
     }
 
-    private void savePaymentEntry(OrderInfo orderInfo) {
+    private PaymentEntry savePaymentEntry(OrderInfo orderInfo) {
         PaymentEntry paymentEntry = new PaymentEntry();
         paymentEntry.setOrderId(orderInfo.getId());
         paymentEntry.setAmount(String.valueOf(orderInfo.getFinalAmount().intValue()));
@@ -254,7 +266,8 @@ public class BitsilaServices {
         long transactionId = System.currentTimeMillis() * 1000 + ThreadLocalRandom.current().nextInt(0, 1000);
         paymentEntry.setTransactionId(String.valueOf(transactionId));
 
-        paymentEntryRepository.save(paymentEntry);
+        PaymentEntry paymentEntry1 = paymentEntryRepository.save(paymentEntry);
+        return paymentEntry1;
     }
 
     private void saveOrderInDeliveryDatabase(OrderInfo orderInfo) {
@@ -280,9 +293,10 @@ public class BitsilaServices {
         orderRepository.save(deliveryOrder);
     }
 
-    private void saveOrderAdditionalDetails(OrderRequest orderRequest, Long orderId, OrderInfo orderInfo) {
+    private  List<OrderAdditionalDetailsDto> saveOrderAdditionalDetails(OrderRequest orderRequest, Long orderId, OrderInfo orderInfo) {
+        List<OrderAdditionalDetailsDto> additionalDetailsDtos = new ArrayList<>();
+
         try {
-            List<OrderAdditionalDetailsDto> additionalDetailsDtos = new ArrayList<>();
 
             additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.BITSILA_ORDER_ID,
                     orderRequest.getOrder().getOrderNo()));
@@ -318,9 +332,10 @@ public class BitsilaServices {
             }
 
             logger.info("Saved {} additional details for orderId: {}", additionalDetailsDtos.size(), orderId);
-
+            return additionalDetailsDtos;
         } catch (Exception e) {
             logger.error("Error saving additional order details for orderId: {}", orderId, e);
         }
+        return null;
     }
 }

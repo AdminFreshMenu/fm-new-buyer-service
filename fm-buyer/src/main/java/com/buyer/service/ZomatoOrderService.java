@@ -862,7 +862,7 @@ public class ZomatoOrderService {
         // Basic order info from MySQL entity
         mongoOrder.setId(orderInfo.getId());
         mongoOrder.setOrder_number(orderInfo.getId());
-        mongoOrder.setName(orderInfo.getBillingAddress().getFirstName() + " " + orderInfo.getExternalOrderId());
+        mongoOrder.setName(orderInfo.getBillingAddress().getFirstName() + " " + orderInfo.getBillingAddress().getLastName());
         mongoOrder.setNote(orderInfo.getOrderData());
         mongoOrder.setChannel(orderInfo.getChannel());
         mongoOrder.setCreated_at(orderInfo.getCreatedAt().toString());
