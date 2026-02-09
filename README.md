@@ -59,8 +59,8 @@ To start the application in default mode:
 mvn spring-boot:run
 ```
 ```
-Server Port: 8080
-Base host url: localhost:8080
+Server Port: 8081
+Base host url: localhost:8081
 ```
 ---
 
