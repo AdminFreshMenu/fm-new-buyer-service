@@ -139,7 +139,11 @@ public class ZomatoOrderService {
             PaymentEntry paymentEntry = savePaymentEntry(savedOrder);
 
             MongoOrder mongoOrder = mapOrderInfoToMongoOrders(savedOrder , orderAdditionalDetailsDtos ,  paymentEntry);
-            ordersRepository.save(mongoOrder);
+            if (mongoOrder != null) {
+                ordersRepository.save(mongoOrder);
+            } else {
+                logger.warn("MongoDB order mapping returned null for orderId: {}, skipping MongoDB save", savedOrder.getId());
+            }
 
             logger.info("Order created successfully with ID: {} for Zomato orderId: {}, Custom externalOrderId: {}",
                        savedOrder.getId(), zomatoOrderId, customExternalOrderId);

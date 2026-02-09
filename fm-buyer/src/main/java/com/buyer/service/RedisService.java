@@ -3,12 +3,16 @@ package com.buyer.service;
 import com.buyer.dto.redis.ProductDTORedis;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
 public class RedisService {
+
+    private static final Logger logger = LoggerFactory.getLogger(RedisService.class);
 
     @Autowired
     private RedisTemplate<String, String> redisTemplate;
@@ -17,7 +21,8 @@ public class RedisService {
     private ObjectMapper objectMapper;
 
     public ProductDTORedis getActiveProductJson(long productId) throws JsonProcessingException {
-        String json = (String) redisTemplate.opsForValue().get("ACTIVE_PRODUCT_" + productId);
+        try {
+            String json = (String) redisTemplate.opsForValue().get("ACTIVE_PRODUCT_" + productId);
 
         if (json == null) {
             return null;
@@ -32,7 +37,11 @@ public class RedisService {
                     .replace("\\\\", "\\");
         }
 
-        ProductDTORedis product = objectMapper.readValue(json, ProductDTORedis.class);
-        return product;
+            ProductDTORedis product = objectMapper.readValue(json, ProductDTORedis.class);
+            return product;
+        } catch (Exception e) {
+            logger.warn("Failed to get product from Redis, returning null. ProductId: {}, Error: {}", productId, e.getMessage());
+            return null;
+        }
     }
 }

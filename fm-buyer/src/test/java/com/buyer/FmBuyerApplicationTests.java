@@ -7,7 +7,7 @@ import org.springframework.test.context.testng.AbstractTestNGSpringContextTests;
 @SpringBootTest
 public class FmBuyerApplicationTests extends AbstractTestNGSpringContextTests {
 
-	@Test(groups = {"smoke"}, description = "Test that the Spring context loads properly")
+	@Test(description = "Test that the Spring context loads properly")
 	public void contextLoads() {
 		// This test will pass if the application context loads successfully
 	}

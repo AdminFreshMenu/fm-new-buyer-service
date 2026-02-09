@@ -143,7 +143,11 @@ public class MagicpinService {
             saveOrderInDeliveryDatabase(savedOrder);
 
             MongoOrder mongoOrder = zomatoOrderService.mapOrderInfoToMongoOrders(orderInfo,orderAdditionalDetailsDtos,paymentEntry);
-            ordersRepository.save(mongoOrder);
+            if (mongoOrder != null) {
+                ordersRepository.save(mongoOrder);
+            } else {
+                logger.warn("MongoDB order mapping returned null for orderId: {}, skipping MongoDB save", savedOrder.getId());
+            }
 
             logger.info("MagicPin order created: internalId={}, magicpinOrderId={}, externalOrderId={}",
                     savedOrder.getId(), magicpinOrderId, externalOrderId);
