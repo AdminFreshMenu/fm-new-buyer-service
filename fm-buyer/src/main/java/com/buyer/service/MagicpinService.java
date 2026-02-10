@@ -49,6 +49,7 @@ import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 
 import static com.buyer.service.SwiggyOrderService.parseOutletId;
+import static com.buyer.service.ZomatoOrderService.SetSourceByBrandId;
 import static com.buyer.service.ZomatoOrderService.createOrderAdditionalDetailsDto;
 import static com.buyer.service.ZomatoOrderService.generateExternalOrderId;
 
@@ -312,7 +313,7 @@ public class MagicpinService {
         deliveryOrder.setStatus("new");
         deliveryOrder.setKitchenId(orderInfo.getKitchenId().intValue());
         deliveryOrder.setBrandId(orderInfo.getBrandId());
-        deliveryOrder.setSource("fm");
+        deliveryOrder.setSource(SetSourceByBrandId(orderInfo.getBrandId()));
         deliveryOrder.setDeliveryChannel(orderInfo.getChannel().toString());
         deliveryOrder.setTripOrderSeq(1L);
         deliveryOrder.setSearchKey(orderInfo.getId() + "," + orderInfo.getShippingAddress().getLastName() + ",");
@@ -347,8 +348,8 @@ public class MagicpinService {
             additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.EXPECTED_KITCHEN_ID,
                     orderInfo.getKitchenId().toString()));
 
-            additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.IS_EXPRESS_CHECK_OUT,
-                    "true"));
+//            additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.IS_EXPRESS_CHECK_OUT,
+//                    "true"));
 
             additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.MAGIC_PIN_OTP,
                     orderRequest.getRiderOTP()));

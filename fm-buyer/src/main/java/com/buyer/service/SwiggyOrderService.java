@@ -49,6 +49,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 
+import static com.buyer.service.ZomatoOrderService.SetSourceByBrandId;
 import static com.buyer.service.ZomatoOrderService.createOrderAdditionalDetailsDto;
 import static com.buyer.service.ZomatoOrderService.generateExternalOrderId;
 
@@ -600,7 +601,7 @@ public class SwiggyOrderService {
             deliveryOrder.setKitchenId(orderInfo.getKitchenId().intValue());
             deliveryOrder.setBrandId(orderInfo.getBrandId());
 
-            deliveryOrder.setSource("fm");
+            deliveryOrder.setSource(SetSourceByBrandId(orderInfo.getBrandId()));
             deliveryOrder.setDeliveryChannel(orderInfo.getChannel().toString());
             deliveryOrder.setTripOrderSeq(1L);
             deliveryOrder.setSearchKey(orderInfo.getId().toString() + "," + orderInfo.getShippingAddress().getLastName() +",");

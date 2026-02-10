@@ -785,11 +785,11 @@ public class ZomatoOrderService {
             additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.ORDER_OFFER_COUPON,
                     "salt"));
 
-            additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.IS_EXPRESS_CHECK_OUT,
-                    "true"));
+            //additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.IS_EXPRESS_CHECK_OUT,
+             //       "true"));
 
-            additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.DELIVERY_TIME_IN_MINUTES,
-                    "0"));
+            //additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.DELIVERY_TIME_IN_MINUTES,
+             //       "0"));
 
             additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.IS_VARIANT,
                     "FALSE"));
@@ -839,7 +839,7 @@ public class ZomatoOrderService {
             deliveryOrder.setKitchenId(orderInfo.getKitchenId().intValue());
             deliveryOrder.setBrandId(orderInfo.getBrandId());
 
-            deliveryOrder.setSource("fm");
+            deliveryOrder.setSource(SetSourceByBrandId(orderInfo.getBrandId()));
             deliveryOrder.setDeliveryChannel(orderInfo.getChannel().toString());
             deliveryOrder.setTripOrderSeq(1L);
             deliveryOrder.setSearchKey(orderInfo.getId().toString() + "," + orderInfo.getShippingAddress().getLastName() +",");
@@ -1257,6 +1257,25 @@ public class ZomatoOrderService {
         }
 
         return mediaList;
+    }
+
+    public static String SetSourceByBrandId(Integer brandId) {
+
+        if(brandId == null) {
+            return "fm";
+        }
+        return switch (brandId) {
+            case 6 -> "gc";
+            case 8 -> "edf";
+            case 11 -> "bs";
+            case 12 -> "db";
+            case 14 -> "tc";
+            case 17 -> "pc";
+            case 18 -> "ss";
+            case 19 -> "cfx";
+            case 20 -> "gg";
+            default -> "fm";
+        };
     }
 
 }

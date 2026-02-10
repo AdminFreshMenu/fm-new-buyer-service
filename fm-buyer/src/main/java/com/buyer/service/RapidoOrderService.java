@@ -48,6 +48,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.concurrent.ThreadLocalRandom;
 
+import static com.buyer.service.ZomatoOrderService.SetSourceByBrandId;
 import static com.buyer.service.ZomatoOrderService.createOrderAdditionalDetailsDto;
 import static com.buyer.service.ZomatoOrderService.generateExternalOrderId;
 
@@ -253,7 +254,7 @@ public class RapidoOrderService {
         deliveryOrder.setStatus("new");
         deliveryOrder.setKitchenId(orderInfo.getKitchenId().intValue());
         deliveryOrder.setBrandId(orderInfo.getBrandId());
-        deliveryOrder.setSource("fm");
+        deliveryOrder.setSource(SetSourceByBrandId(orderInfo.getBrandId()));
         deliveryOrder.setDeliveryChannel(orderInfo.getChannel().toString());
         deliveryOrder.setTripOrderSeq(1L);
         deliveryOrder.setSearchKey(orderInfo.getId() + "," + orderInfo.getShippingAddress().getLastName() + ",");
@@ -305,8 +306,8 @@ public class RapidoOrderService {
 //            additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.ORDER_DISCOUNT_AMOUNT,
 //                    orderInfo.getOfferAmount().toString()));
 
-            additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.IS_EXPRESS_CHECK_OUT,
-                    "true"));
+//            additionalDetailsDtos.add(createOrderAdditionalDetailsDto(orderId, OrderAdditionalData.IS_EXPRESS_CHECK_OUT,
+//                    "true"));
 
             // Save all additional details
             for (OrderAdditionalDetailsDto dto : additionalDetailsDtos) {
