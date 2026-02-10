@@ -28,5 +28,5 @@ jobs:
 
       - name: Build and Test with Maven
         run: |
-          cd fm-new-buyer-service
+          cd fm-new-buyer-service/fm-buyer
           mvn clean test
