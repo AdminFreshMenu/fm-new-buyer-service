@@ -11,8 +11,7 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -20,13 +19,6 @@ jobs:
           java-version: '17'
           distribution: 'temurin'
 
-      - name: Debug workspace (optional but helpful)
-        run: |
-          pwd
-          ls -la
-          find . -name pom.xml
-
-      - name: Build and Test with Maven
-        run: |
-          cd fm-new-buyer-service/fm-buyer
-          mvn clean test
+      - name: Build & Test
+        working-directory: fm-buyer
+        run: mvn clean test
