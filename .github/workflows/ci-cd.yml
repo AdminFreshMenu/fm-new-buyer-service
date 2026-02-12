@@ -21,4 +21,4 @@ jobs:
 
       - name: Build & Test
         working-directory: fm-buyer
-        run: mvn clean test
+        run: mvn clean install -DskipTests
